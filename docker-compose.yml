@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: news-rss
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    ports:
+      - "3000:3000"
+    networks:
+      - news-rss-network
+
+networks:
+  news-rss-network:
+    driver: bridge 

@@ -1,0 +1,27 @@
+default_notify_discord: true
+default_discord_webhook: ""
+default_notify_telegram: false
+default_telegram_bot_token: ""
+default_telegram_chat_id: ""
+processing_delay:
+  min_seconds: 30
+  max_seconds: 60
+retry:
+  max_attempts: 3
+  initial_delay_seconds: 5
+  backoff_strategy: exponential
+feeds:
+  # - name: vnexpress
+  #   rss_url: "https://vnexpress.net/rss/tin-moi-nhat.rss"
+  #   css_selector: ".fck_detail"
+  #   override_notify: ""
+  #   override_discord_webhook: ""
+  #   override_telegram_bot_token: ""
+  #   override_telegram_chat_id: ""
+  - name: tuoitre
+    rss_url: "https://tuoitre.vn/rss/tin-moi-nhat.rss"
+    css_selector: ".detail-content"
+    override_notify: ""
+    override_discord_webhook: ""
+    override_telegram_bot_token: ""
+    override_telegram_chat_id: "" 
