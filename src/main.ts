@@ -13,11 +13,25 @@ function isToday(dateString: string | undefined): boolean {
   if (!dateString) return false;
   
   const articleDate = new Date(dateString);
+  
+  // Check for invalid dates
+  if (isNaN(articleDate.getTime())) {
+    return false;
+  }
+  
   const today = new Date();
   
-  // Reset time to start of day for comparison
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const articleStart = new Date(articleDate.getFullYear(), articleDate.getMonth(), articleDate.getDate());
+  // Use UTC for consistent timezone handling
+  const todayStart = new Date(Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate()
+  ));
+  const articleStart = new Date(Date.UTC(
+    articleDate.getUTCFullYear(),
+    articleDate.getUTCMonth(),
+    articleDate.getUTCDate()
+  ));
   
   return todayStart.getTime() === articleStart.getTime();
 }
