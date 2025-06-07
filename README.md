@@ -64,9 +64,9 @@ Microsoft announced the rollout of AI-powered features across Word, Excel, and P
 
 ## Prerequisites
 
-- Node.js 18+
-- Redis server (for RSS processing)
-- PostgreSQL server (for RSS processing)
+- Node.js 24+
+- Redis server (for RSS processing) - external or managed service
+- PostgreSQL server (for RSS processing) - external or managed service  
 - Docker & Docker Compose (recommended)
 - OpenAI-compatible API server (OpenAI, Groq, local inference server, etc.)
 - **Search-enabled AI API** (Perplexity, OpenAI with web search, etc.) for AI search service
@@ -76,11 +76,14 @@ Microsoft announced the rollout of AI-powered features across Word, Excel, and P
 Create a `.env` file in the root directory:
 
 ```env
-# Redis Configuration (RSS Service)
-REDIS_URL=redis://localhost:6379
+# Application Environment
+NODE_ENV=production
 
-# PostgreSQL Configuration (RSS Service)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/newsrss?sslmode=disable
+# Redis Configuration (RSS Service) - External/Managed Service
+REDIS_URL=redis://your-redis-host:6379
+
+# PostgreSQL Configuration (RSS Service) - External/Managed Service  
+DATABASE_URL=postgresql://username:password@your-postgres-host:5432/newsrss?sslmode=disable
 
 # RSS Summarization AI Configuration
 OPENAI_API_KEY=your-summarization-api-key
@@ -91,14 +94,6 @@ OPENAI_TEXT_MODEL=mixtral-8x7b-32768  # Or gpt-3.5-turbo
 OPENAI_API_KEY_SEARCH=your-search-api-key
 OPENAI_BASE_URL_SEARCH=https://api.perplexity.ai  # Or other search-enabled API
 OPENAI_TEXT_MODEL_SEARCH=sonar-medium-online  # Or other search model
-
-# Docker Environment Variables
-POSTGRES_DB=newsrss
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-
-# Optional: Set log level (production = clean logs, development = detailed)
-NODE_ENV=production
 ```
 
 **API Provider Examples:**
@@ -129,8 +124,8 @@ NODE_ENV=production
 
 3. Set up environment variables:
    ```bash
-   cp .env.example .env
-   # Edit .env with your API keys and settings
+   # Create .env file with your external database/Redis connections
+   # and API keys (see Environment Variables section above)
    ```
 
 4. Build and run with Docker:
@@ -138,6 +133,8 @@ NODE_ENV=production
    npm run docker:build
    npm run docker:up
    ```
+
+**Note**: You'll need external Redis and PostgreSQL services. The Docker Compose only runs the application services.
 
 ### Option 2: Manual Installation
 
@@ -154,12 +151,12 @@ NODE_ENV=production
    # Edit config.yaml with your settings
    ```
 
-3. Set up database:
+3. Set up external services and database:
    ```bash
-   # Create PostgreSQL database
-   createdb newsrss
+   # Set up external PostgreSQL and Redis services
+   # Update .env file with connection strings
    
-   # Run migrations
+   # Run migrations on your PostgreSQL database
    npm run migrate
    ```
 
