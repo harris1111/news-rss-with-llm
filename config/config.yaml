@@ -1,27 +1,58 @@
-default_notify_discord: true
-default_discord_webhook: ""
+# Discord webhook configuration
+discord:
+  default_webhook_url: "https://discord.com/api/webhooks/1296761289493839923/hePqnnBAiVqOYVNvuUDgClpDZCVwffUxwp8_lRNU_kL7aC22OaMrmFJxfF1tnWKqWR_L"  # Your default webhook URL
+  categories:
+    World: ""
+    News: ""
+    Business: "https://discord.com/api/webhooks/1296761289493839923/hePqnnBAiVqOYVNvuUDgClpDZCVwffUxwp8_lRNU_kL7aC22OaMrmFJxfF1tnWKqWR_L"
+    Startup: ""
+    Entertainment: ""
+    Law: ""
+    Education: ""
+    Health: ""
+    Lifestyle: ""
+    Travel: ""
+    Technology: "https://discord.com/api/webhooks/1296761289493839923/hePqnnBAiVqOYVNvuUDgClpDZCVwffUxwp8_lRNU_kL7aC22OaMrmFJxfF1tnWKqWR_L"
+    Security: ""
+    Programming: ""
+    DevOps: ""
+    Other: ""
+
+# Telegram configuration (legacy)
 default_notify_telegram: false
 default_telegram_bot_token: ""
 default_telegram_chat_id: ""
+
+# Processing configuration
 processing_delay:
   min_seconds: 30
   max_seconds: 60
+
+# Retry configuration
 retry:
   max_attempts: 3
   initial_delay_seconds: 5
   backoff_strategy: exponential
+
+# Scheduling configuration
+scheduling:
+  mode: "interval"  # Options: "interval", "cron", "manual"
+  interval:
+    minutes: 30     # Run every 30 minutes
+  cron:
+    expression: "0 */2 * * *"  # Run every 2 hours
+  timezone: "Asia/Ho_Chi_Minh"  # Default timezone for cron jobs
+
+# RSS feed configuration
 feeds:
-  # - name: vnexpress
-  #   rss_url: "https://vnexpress.net/rss/tin-moi-nhat.rss"
-  #   css_selector: ".fck_detail"
+  - name: vnexpress
+    url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+    category: "Technology"
+    css_selector: ".fck_detail"
+  # - name: tuoitre
+  #   url: "https://tuoitre.vn/rss/tin-moi-nhat.rss"
+  #   css_selector: ".detail-content"
   #   override_notify: ""
   #   override_discord_webhook: ""
   #   override_telegram_bot_token: ""
-  #   override_telegram_chat_id: ""
-  - name: tuoitre
-    rss_url: "https://tuoitre.vn/rss/tin-moi-nhat.rss"
-    css_selector: ".detail-content"
-    override_notify: ""
-    override_discord_webhook: ""
-    override_telegram_bot_token: ""
-    override_telegram_chat_id: "" 
+  #   override_telegram_chat_id: "" 
