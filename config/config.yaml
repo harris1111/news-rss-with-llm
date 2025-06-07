@@ -34,16 +34,59 @@ retry:
   initial_delay_seconds: 5
   backoff_strategy: exponential
 
-# Scheduling configuration
+# Scheduling configuration - now supports two separate schedules
 scheduling:
-  mode: "interval"  # Options: "interval", "cron", "manual"
-  interval:
-    minutes: 30     # Run every 30 minutes
-  cron:
-    expression: "0 */2 * * *"  # Run every 2 hours
-  timezone: "Asia/Ho_Chi_Minh"  # Default timezone for cron jobs
+  # RSS feed processing (existing feature)
+  rss_processing:
+    mode: "interval"  # Options: "interval", "cron", "manual"
+    interval:
+      minutes: 30     # Run every 30 minutes
+    cron:
+      expression: "0 */2 * * *"  # Run every 2 hours
+    timezone: "Asia/Ho_Chi_Minh"
+  
+  # AI search feature (new feature)
+  ai_search:
+    enabled: true
+    mode: "interval"  # Options: "interval", "cron", "manual"
+    interval:
+      minutes: 120    # Run every 2 hours
+    cron:
+      expression: "0 */4 * * *"  # Run every 4 hours
+    timezone: "Asia/Ho_Chi_Minh"
 
-# RSS feed configuration
+# AI configuration for RSS summarization (existing feature)
+ai_summarization:
+  enabled: true
+  # Custom summary prompt - if not provided, uses default
+  summary_prompt: |
+    Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
+
+    Bài báo: {{content}}
+
+    Trả lời theo định dạng:
+    SUMMARY: [tóm tắt bằng tiếng Việt]
+    KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]
+
+# AI search categories configuration (new feature)
+ai_search_categories:
+  ai-news:
+    enabled: true
+    category: "Artificial Intelligence"
+    search_prompt: |
+      Search for the latest 5 news articles about artificial intelligence, machine learning, AI research, and AI applications published today. 
+      Focus on recent developments, breakthroughs, product launches, and industry news.
+    discord_webhook: "https://discord.com/api/webhooks/1296761289493839923/hePqnnBAiVqOYVNvuUDgClpDZCVwffUxwp8_lRNU_kL7aC22OaMrmFJxfF1tnWKqWR_L"
+  
+  tech-news:
+    enabled: true
+    category: "Technology"
+    search_prompt: |
+      Search for the latest 5 technology news articles published today. 
+      Include topics like software development, hardware releases, tech companies, cybersecurity, and digital innovations.
+    discord_webhook: "https://discord.com/api/webhooks/1296761289493839923/hePqnnBAiVqOYVNvuUDgClpDZCVwffUxwp8_lRNU_kL7aC22OaMrmFJxfF1tnWKqWR_L"
+
+# RSS feed configuration (existing feature)
 feeds:
   - name: vnexpress
     url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"

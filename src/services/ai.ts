@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { createServiceLogger } from '../utils/logger';
+import { loadConfig } from './config';
 
 const logger = createServiceLogger('ai-service');
 
@@ -24,6 +25,15 @@ export interface AIResponse {
   keywords: string[];
 }
 
+// Default prompt if none provided in config
+const DEFAULT_SUMMARY_PROMPT = `Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
+
+Bài báo: {{content}}
+
+Trả lời theo định dạng:
+SUMMARY: [tóm tắt bằng tiếng Việt]
+KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]`;
+
 export async function summarizeAndExtract(
   content: string,
   title: string
@@ -31,19 +41,18 @@ export async function summarizeAndExtract(
   try {
     logger.debug('Starting AI processing', { title });
     
-    // Much simpler and more direct prompt
-    const prompt = `Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
-
-Bài báo: ${content}
-
-Trả lời theo định dạng:
-SUMMARY: [tóm tắt bằng tiếng Việt]
-KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]`;
+    // Load config to get custom summary prompt
+    const config = await loadConfig();
+    const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_SUMMARY_PROMPT;
+    
+    // Replace template variable with actual content
+    const prompt = summaryPrompt.replace('{{content}}', content);
 
     logger.debug('AI request details', {
       model: MODEL,
       promptLength: prompt.length,
-      contentLength: content.length
+      contentLength: content.length,
+      usingCustomPrompt: !!config.ai_summarization?.summary_prompt
     });
 
     const response = await openai.chat.completions.create({
