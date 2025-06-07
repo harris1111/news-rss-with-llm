@@ -4,12 +4,10 @@ import { loadConfig } from './services/config';
 import { fetchFeed } from './services/feed';
 import { pushJob } from './services/queue';
 import { isArticleProcessed } from './services/db';
-import { searchNewsArticles } from './services/ai-search';
-import { sendSearchResultsForCategory } from './services/discord-search';
 import cron from 'node-cron';
 import { formatInTimeZone } from 'date-fns-tz';
 
-const logger = createServiceLogger('producer');
+const logger = createServiceLogger('rss-producer');
 
 function isToday(dateString: string | undefined): boolean {
   if (!dateString) return false;
@@ -98,56 +96,6 @@ async function processFeeds() {
   }
 }
 
-async function processAISearch() {
-  try {
-    const config = await loadConfig();
-    
-    if (!config.ai_search_categories) {
-      logger.debug('No AI search categories configured');
-      return;
-    }
-
-    logger.info('Starting AI search processing');
-    
-    for (const [categoryKey, searchCategory] of Object.entries(config.ai_search_categories)) {
-      if (!searchCategory.enabled) {
-        logger.debug('Skipping disabled search category', { categoryKey });
-        continue;
-      }
-      
-      logger.info('Processing AI search for category', { 
-        categoryKey,
-        category: searchCategory.category 
-      });
-      
-      try {
-        const searchResult = await searchNewsArticles(searchCategory);
-        
-        if (searchResult && searchResult.articles.length > 0) {
-          await sendSearchResultsForCategory(searchResult, categoryKey);
-          logger.info('AI search completed for category', {
-            categoryKey,
-            articlesFound: searchResult.articles.length
-          });
-        } else {
-          logger.warn('No articles found for search category', { categoryKey });
-        }
-      } catch (error) {
-        logger.error('Error processing AI search for category', {
-          error: error instanceof Error ? error.message : String(error),
-          categoryKey
-        });
-      }
-    }
-    
-    logger.info('AI search processing completed');
-  } catch (error) {
-    logger.error('Error in AI search processing cycle', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-}
-
 function startScheduling(schedulingConfig: any, processFunction: () => Promise<void>, name: string) {
   switch (schedulingConfig.mode) {
     case 'interval':
@@ -190,30 +138,32 @@ function startScheduling(schedulingConfig: any, processFunction: () => Promise<v
 
 async function main() {
   try {
+    logger.info('RSS Processing Application starting...');
+    
     const config = await loadConfig();
     
     // Start RSS processing scheduling
     startScheduling(config.scheduling.rss_processing, processFeeds, 'RSS processing');
     
-    // Start AI search scheduling if enabled
-    if (config.scheduling.ai_search?.enabled) {
-      startScheduling(config.scheduling.ai_search, processAISearch, 'AI search');
-    } else {
-      logger.info('AI search is disabled');
-    }
-    
-    // Initial runs
+    // Initial run
     logger.info('Running initial RSS processing');
     await processFeeds();
     
-    if (config.scheduling.ai_search?.enabled) {
-      logger.info('Running initial AI search');
-      await processAISearch();
-    }
+    logger.info('RSS Processing Application started successfully');
     
-    logger.info('All scheduling started successfully');
+    // Keep the process running
+    process.on('SIGINT', () => {
+      logger.info('Received SIGINT. Gracefully shutting down...');
+      process.exit(0);
+    });
+    
+    process.on('SIGTERM', () => {
+      logger.info('Received SIGTERM. Gracefully shutting down...');
+      process.exit(0);
+    });
+    
   } catch (error) {
-    logger.error('Error in main process', {
+    logger.error('Error in RSS processing application', {
       error: error instanceof Error ? error.message : String(error)
     });
     process.exit(1);

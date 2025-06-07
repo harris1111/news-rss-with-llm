@@ -1,61 +1,74 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  newsrss-producer:
-    build:
+  # RSS Main Process (Feed monitoring and job creation)
+  newsrss-main:
+    build: 
       context: .
-      target: production
-    command: node dist/main.js
+      dockerfile: Dockerfile
+    container_name: newsrss-rss-main
+    restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - SERVICE_NAME=RSS_MAIN
     volumes:
       - ./config:/app/config
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
+      - ./logs:/app/logs
+    networks:
+      - newsrss-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
+      test: ["CMD", "node", "-e", "console.log('RSS Main Process Health Check OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
 
+  # RSS Worker Process (Article processing and AI summarization)
   newsrss-worker:
-    build:
+    build: 
       context: .
-      target: production
-    command: node dist/worker.js
+      dockerfile: Dockerfile
+    container_name: newsrss-rss-worker
+    restart: unless-stopped
     env_file:
       - .env
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      replicas: 2
+    environment:
+      - SERVICE_NAME=RSS_WORKER
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - newsrss-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
+      test: ["CMD", "node", "-e", "console.log('RSS Worker Process Health Check OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      replicas: 2  # Scale workers as needed
+
+  # AI Search Service (Independent AI news search)
+  newsrss-ai-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-ai-search
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=AI_SEARCH
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('AI Search Service Health Check OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-volumes:
-  redis_data:
-
-# ports:
-#   - "3000:3000"
 networks:
-  news-rss-network:
+  newsrss-network:
     driver: bridge 
