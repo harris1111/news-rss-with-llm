@@ -1,61 +1,138 @@
 version: '3.8'
 
 services:
+  # RSS Main Process (Feed monitoring and job creation)
+  newsrss-main:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-rss-main
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=RSS_MAIN
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-newsrss}?sslmode=disable
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL}
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('RSS Main Process Health Check OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # RSS Worker Process (Article processing and AI summarization)
+  newsrss-worker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-rss-worker
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=RSS_WORKER
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-newsrss}?sslmode=disable
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_TEXT_MODEL=${OPENAI_TEXT_MODEL}
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('RSS Worker Process Health Check OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      replicas: 2  # Scale workers as needed
+
+  # AI Search Service (Independent AI news search)
+  newsrss-ai-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-ai-search
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=AI_SEARCH
+      - NODE_ENV=production
+      - OPENAI_API_KEY_SEARCH=${OPENAI_API_KEY_SEARCH}
+      - OPENAI_BASE_URL_SEARCH=${OPENAI_BASE_URL_SEARCH}
+      - OPENAI_TEXT_MODEL_SEARCH=${OPENAI_TEXT_MODEL_SEARCH}
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('AI Search Service Health Check OK')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: newsrss-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-newsrss}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis Cache
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    container_name: newsrss-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - newsrss-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  newsrss-producer:
-    build:
-      context: .
-      target: production
-    command: node dist/main.js
-    env_file:
-      - .env
-    volumes:
-      - ./config:/app/config
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  newsrss-worker:
-    build:
-      context: .
-      target: production
-    command: node dist/worker.js
-    env_file:
-      - .env
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      replicas: 2
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 volumes:
+  postgres_data:
+    driver: local
   redis_data:
+    driver: local
 
 # ports:
 #   - "3000:3000"
 networks:
-  news-rss-network:
+  newsrss-network:
     driver: bridge 
