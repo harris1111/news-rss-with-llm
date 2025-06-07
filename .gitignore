@@ -9,6 +9,9 @@ yarn-error.log
 .env.local
 .env.*.local
 
+# Configuration files (contains sensitive data)
+config/config.yaml
+
 # Build output
 dist/
 build/
