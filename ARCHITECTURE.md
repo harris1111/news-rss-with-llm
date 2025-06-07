@@ -2,7 +2,7 @@
 
 ## Overview
 
-NewsRSS is a scalable RSS feed processing system with AI-powered Vietnamese summarization and Discord notifications. The architecture consists of producer-consumer processes communicating through Redis queues, with PostgreSQL for persistence.
+NewsRSS is a scalable RSS feed processing system with AI-powered Vietnamese summarization, AI news search capabilities, and Discord notifications. The architecture consists of producer-consumer processes with dual AI services, communicating through Redis queues, with PostgreSQL for persistence.
 
 ## System Components
 
@@ -10,22 +10,30 @@ NewsRSS is a scalable RSS feed processing system with AI-powered Vietnamese summ
 ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
 │                 │    │              │    │                 │
 │   Main Process  │───▶│ Redis Queue  │───▶│ Worker Process  │
-│   (Producer)    │    │              │    │   (Consumer)    │
+│   (Producer)    │    │  (RSS Jobs)  │    │   (Consumer)    │
 │                 │    │              │    │                 │
 └─────────────────┘    └──────────────┘    └─────────────────┘
          │                                           │
-         │                                           │
-         ▼                                           ▼
-┌─────────────────┐                         ┌─────────────────┐
-│                 │                         │                 │
-│  PostgreSQL DB  │◀────────────────────────│  AI Service     │
-│                 │                         │  (Vietnamese)   │
-└─────────────────┘                         └─────────────────┘
+         │              ┌──────────────┐             │
+         │              │              │             │
+         └──────────────▶│ AI Search    │             │
+                        │ Service      │             │
+                        │              │             │
+                        └──────────────┘             │
+                                 │                   │
+         ▼                       ▼                   ▼
+┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
+│                 │    │              │    │                 │
+│  PostgreSQL DB  │    │Discord Search│    │  AI Service     │
+│                 │    │  Service     │    │  (Vietnamese)   │
+└─────────────────┘    │ (Enhanced)   │    │                 │
+                       └──────────────┘    └─────────────────┘
                                                      │
                                                      ▼
                                             ┌─────────────────┐
                                             │                 │
                                             │ Discord Service │
+                                            │   (RSS Feed)    │
                                             │                 │
                                             └─────────────────┘
 ```
@@ -33,325 +41,365 @@ NewsRSS is a scalable RSS feed processing system with AI-powered Vietnamese summ
 ## Data Flow
 
 ### Main Process (Producer)
-1. **Feed Monitoring**: Reads RSS feeds from configured sources
-2. **Change Detection**: Compares against stored articles in PostgreSQL
-3. **Job Creation**: Creates processing jobs for new articles
-4. **Queue Publishing**: Pushes jobs to Redis queue
+1. **RSS Feed Processing** (Original Feature):
+   - Reads RSS feeds from configured sources
+   - Compares against stored articles in PostgreSQL  
+   - Creates processing jobs for new articles
+   - Pushes jobs to Redis queue
+
+2. **AI Search Processing** (New Feature):
+   - Runs on separate schedule from RSS processing
+   - Uses search-enabled AI models (Perplexity Sonar, etc.)
+   - Searches for current news by category
+   - Sends results directly to Discord (no queue/database)
 
 ### Worker Process (Consumer)
-1. **Job Consumption**: Pulls jobs from Redis queue
-2. **Content Extraction**: Fetches and extracts article content
-3. **AI Processing**: Generates Vietnamese summaries and keywords
-4. **Database Storage**: Saves processed articles to PostgreSQL
-5. **Notification**: Sends formatted notifications to Discord
+1. **RSS Job Processing** (Original Feature):
+   - Pulls jobs from Redis queue
+   - Fetches and extracts article content
+   - Generates Vietnamese summaries and keywords
+   - Saves processed articles to PostgreSQL
+   - Sends formatted notifications to Discord
 
 ## Detailed Component Design
 
 ### 1. Main Process (`src/main.ts`)
 
-**Responsibilities:**
-- RSS feed parsing and monitoring
+**Enhanced Responsibilities:**
+- **RSS feed parsing and monitoring** (existing)
+- **AI search execution** (new)
+- **Dual scheduling system** (new)
 - Article deduplication
 - Job queue management
-- Scheduling (interval/cron based)
+
+**Dual Scheduling System:**
+```typescript
+// RSS Processing Schedule
+startScheduling(config.scheduling.rss_processing, processFeeds, 'RSS processing');
+
+// AI Search Schedule  
+if (config.scheduling.ai_search?.enabled) {
+  startScheduling(config.scheduling.ai_search, processAISearch, 'AI search');
+}
+```
 
 **Key Features:**
-- Configurable feed sources via YAML
-- Database persistence for processed articles
-- Graceful error handling and logging
+- Independent scheduling for RSS and AI search
+- Today-only filtering for RSS articles
+- Pre-queue duplicate checking
+- Configurable search categories
 
 ### 2. Worker Process (`src/worker.ts`)
 
-**Responsibilities:**
-- Queue job processing
+**Unchanged Responsibilities:**
+- Queue job processing (RSS articles only)
 - Content extraction and cleaning
 - AI integration and response processing
 - Discord notification dispatch
 
 **Processing Pipeline:**
 ```
-Job → Content Extraction → AI Processing → Database Storage → Discord Notification
+RSS Job → Content Extraction → AI Processing → Database Storage → Discord Notification
 ```
 
-### 3. AI Service (`src/services/ai.ts`)
+*Note: AI search results bypass the worker entirely*
 
-**Design Philosophy:**
-- **Vietnamese-first**: All prompts and responses in Vietnamese
-- **Robust extraction**: Multiple fallback strategies for parsing AI responses
-- **Error resilience**: Always returns valid Vietnamese content
+### 3. AI Services
 
-**Processing Strategy:**
+#### 3.1 AI Service (`src/services/ai.ts`) - RSS Summarization
+
+**Enhanced Features:**
+- **Customizable summary prompts** via configuration
+- **Template variable replacement** (`{{content}}`)
+- **Vietnamese-first design** maintained
+- **Robust extraction** with multiple fallback strategies
+
+**Configuration Integration:**
 ```typescript
-// Vietnamese prompt structure
-const prompt = `
-Hãy phân tích bài viết sau bằng tiếng Việt:
-- Tóm tắt 2-3 câu chính
-- Liệt kê 5 từ khóa quan trọng
-
-Định dạng trả lời:
-SUMMARY: [Tóm tắt bằng tiếng Việt]
-KEYWORDS: [từ khóa 1, từ khóa 2, từ khóa 3, từ khóa 4, từ khóa 5]
-`;
+const config = await loadConfig();
+const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_SUMMARY_PROMPT;
+const prompt = summaryPrompt.replace('{{content}}', content);
 ```
 
-**Extraction Logic:**
-1. **Regex Pattern Matching**: Primary extraction method
-2. **Line-by-line parsing**: Secondary fallback
-3. **Vietnamese content detection**: Validates response language
-4. **Default fallbacks**: Ensures system continues working
+#### 3.2 AI Search Service (`src/services/ai-search.ts`) - News Search
 
-### 4. Discord Service (`src/services/discord.ts`)
+**Enhanced Component Design:**
+- **Search-enabled AI models** (Perplexity Sonar, OpenAI with search)
+- **Separate API configuration** (different keys/endpoints)
+- **Category-based prompting** 
+- **Enhanced structured response parsing**
+- **URL sanitization and validation**
+- **Improved error handling**
 
-**Notification Format:**
-- **Embed structure** with title as hyperlink
-- **Clean summary** in quotes without boilerplate
-- **Keywords field** at bottom
-- **Vietnamese content** throughout
+**Enhanced Search Process:**
+```typescript
+const response = await searchClient.chat.completions.create({
+  model: SEARCH_MODEL,
+  messages: [
+    { 
+      role: 'system', 
+      content: 'You are a news search assistant. Search for current, relevant news articles and provide structured results with clean titles, valid URLs, concise summaries, and accurate source names. Always provide complete URLs without any markdown formatting or brackets.'
+    },
+    { role: 'user', content: searchCategory.search_prompt }
+  ]
+});
+```
 
-**Implementation:**
+**URL Cleaning Process:**
+```typescript
+function cleanUrl(url: string): string {
+  // Remove markdown formatting, brackets, quotes
+  let cleaned = url.replace(/[\[\]()"`]/g, '').trim();
+  
+  // Ensure proper URL format
+  if (cleaned && !cleaned.match(/^https?:\/\//)) {
+    if (cleaned.startsWith('www.') || cleaned.includes('.com')) {
+      cleaned = `https://${cleaned}`;
+    }
+  }
+  
+  // Validate URL before returning
+  try {
+    new URL(cleaned);
+    return cleaned;
+  } catch {
+    return '';
+  }
+}
+```
+
+### 4. Discord Services
+
+#### 4.1 Discord Service (`src/services/discord.ts`) - RSS Notifications
+
+**Unchanged Design:**
+- Embed structure with title as hyperlink
+- Clean summary in quotes without boilerplate
+- Keywords field at bottom
+- Vietnamese content throughout
+
+#### 4.2 Discord Search Service (`src/services/discord-search.ts`) - Search Results
+
+**Enhanced Component Design:**
+- **Rich embed format** for multiple articles
+- **Structured article listings** with sources and URLs
+- **Category-specific webhooks** with fallback
+- **Configurable webhook routing**
+- **Date stamping** for all articles
+- **Automatic keyword extraction**
+- **URL sanitization** to prevent formatting issues
+
+**Enhanced Embed Structure:**
 ```typescript
 const embed = {
-  title: article.title,
-  url: article.url,
-  description: `"${summary}"`,
-  fields: [
-    {
-      name: "Keywords",
-      value: keywords.join(", "),
+  title: `📰 Latest ${searchResult.category} News`,
+  description: `Found ${searchResult.totalFound} recent articles (${currentDate})`,
+  fields: searchResult.articles.map((article, index) => {
+    const keywords = generateKeywords(article.title, article.summary);
+    const cleanUrl = cleanUrl(article.url);
+    
+    return {
+      name: `${index + 1}. ${article.title} (${currentDate})`,
+      value: `${article.summary}
+**Source:** ${article.source}
+**Keywords:** ${keywords.join(', ')}
+[Read more](${cleanUrl})`,
       inline: false
-    }
-  ]
+    };
+  }),
+  footer: {
+    text: `AI News Search • ${searchResult.category} • ${currentDate}`
+  }
 };
+```
+
+**Keyword Extraction Algorithm:**
+```typescript
+function generateKeywords(title: string, summary: string): string[] {
+  const text = `${title} ${summary}`.toLowerCase();
+  
+  // Tech/AI keyword detection
+  const techKeywords = ['artificial intelligence', 'ai', 'machine learning', ...];
+  const foundKeywords = techKeywords.filter(keyword => text.includes(keyword));
+  
+  // Title-based keywords
+  const titleWords = title.split(' ')
+    .filter(word => word.length > 3)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .slice(0, 3);
+  
+  // Combine and return up to 5 keywords
+  return [...foundKeywords, ...titleWords]
+    .filter((keyword, index, arr) => arr.indexOf(keyword) === index)
+    .slice(0, 5);
+}
 ```
 
 ### 5. Database Layer (`src/services/db.ts`)
 
-**Technology**: PostgreSQL with Knex.js ORM
+**Unchanged Design:**
+- PostgreSQL with Knex.js ORM
+- RSS articles stored for deduplication
+- AI search results are ephemeral (not stored)
 
-**Schema Design:**
-```sql
-CREATE TABLE articles (
-  id SERIAL PRIMARY KEY,
-  title VARCHAR(500) NOT NULL,
-  url TEXT NOT NULL UNIQUE,
-  summary TEXT,
-  keywords TEXT,
-  content TEXT,
-  category VARCHAR(100),
-  published_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+**Enhanced Usage:**
+- Pre-queue duplicate checking in main process
+- Today-only filtering integration
+- Same schema, optimized access patterns
+
+### 6. Configuration Management
+
+#### Enhanced Configuration Structure (`config/config.yaml`)
+
+```yaml
+# Dual scheduling system
+scheduling:
+  rss_processing:
+    mode: "interval"
+    interval:
+      minutes: 30
+  ai_search:
+    enabled: true
+    mode: "interval" 
+    interval:
+      minutes: 120
+
+# RSS summarization config
+ai_summarization:
+  enabled: true
+  summary_prompt: |
+    Custom Vietnamese prompt with {{content}} placeholder
+
+# AI search categories
+ai_search_categories:
+  ai-news:
+    enabled: true
+    category: "Artificial Intelligence"
+    search_prompt: |
+      Search for the latest 10 AI news articles...
+    discord_webhook: "category-specific-webhook"
 ```
 
-**Key Features:**
-- Unique constraint on URLs for deduplication
-- Sufficient field lengths for Vietnamese content
-- Timestamp tracking for auditing
-- Category support for feed organization
+#### Enhanced Environment Variables
 
-### 6. Queue System (`src/services/queue.ts`)
-
-**Technology**: Redis with reliable queue processing
-
-**Job Structure:**
-```typescript
-interface ProcessingJob {
-  articleId: string;
-  url: string;
-  title: string;
-  category: string;
-  publishedAt: Date;
-  retryCount?: number;
-}
-```
-
-**Features:**
-- Job persistence in Redis
-- Retry mechanisms for failed jobs
-- Graceful error handling
-- Queue monitoring and health checks
-
-### 7. Logging System (`src/utils/logger.ts`)
-
-**Design**: Winston-based with environment-aware configuration
-
-**Production Mode** (`NODE_ENV=production`):
-- Info level and above
-- Clean, structured output
-- Minimal debugging noise
-
-**Development Mode** (`NODE_ENV=development`):
-- Debug level and above
-- Detailed request/response logging
-- Full error stack traces
-
-**Service-specific Loggers:**
-```typescript
-export const aiLogger = logger.child({ service: 'ai' });
-export const discordLogger = logger.child({ service: 'discord' });
-export const queueLogger = logger.child({ service: 'queue' });
-```
-
-## Configuration Management
-
-### Environment Variables
 ```env
-# Core Services
-REDIS_URL=redis://localhost:6379
-DATABASE_URL=postgresql://user:pass@host:port/db?sslmode=disable
-
-# AI Configuration
-OPENAI_API_KEY=your-key
-OPENAI_BASE_URL=https://api.groq.com  # Flexible provider support
+# RSS Summarization (existing)
+OPENAI_API_KEY=your-summarization-key
+OPENAI_BASE_URL=https://api.groq.com
 OPENAI_TEXT_MODEL=mixtral-8x7b-32768
 
-# Notifications
-DISCORD_WEBHOOK_URL=your-webhook
-
-# System
-NODE_ENV=production  # Controls logging verbosity
+# AI Search (new)
+OPENAI_API_KEY_SEARCH=your-search-key
+OPENAI_BASE_URL_SEARCH=https://api.perplexity.ai
+OPENAI_TEXT_MODEL_SEARCH=sonar-medium-online
 ```
 
-### Feed Configuration (`config/config.yaml`)
-```yaml
-feeds:
-  - name: "VnExpress"
-    url: "https://vnexpress.net/rss/suc-khoe.rss"
-    category: "health"
-    css_selector: ".fck_detail"
+## Enhanced Data Flow Patterns
 
-scheduling:
-  mode: "interval"
-  interval:
-    minutes: 30
+### RSS Processing Flow (Existing)
 ```
+RSS Feed → Today Filter → Duplicate Check → Redis Queue → Worker → AI Summarization → Database → Discord
+```
+
+### AI Search Flow (Enhanced)
+```
+Schedule Trigger → AI Search → URL Sanitization → Keyword Extraction → Enhanced Discord Embed
+```
+
+### Parallel Processing
+- **RSS and AI Search run independently**
+- **Different schedules and configurations**
+- **No shared state or dependencies**
+- **Isolated error handling**
 
 ## Error Handling Strategy
 
-### 1. Graceful Degradation
-- AI failures don't stop the pipeline
-- Vietnamese fallback content generated
-- System continues processing other articles
+### Enhanced Error Isolation
+1. **RSS Processing Failures**: Don't affect AI search
+2. **AI Search Failures**: Don't affect RSS processing  
+3. **Service-specific logging**: Separate log contexts
+4. **Independent retry mechanisms**: Different retry strategies
+5. **URL validation failures**: Graceful degradation with logging
 
-### 2. Retry Mechanisms
-- Failed jobs automatically retried
-- Exponential backoff for transient failures
-- Maximum retry limits to prevent infinite loops
-
-### 3. Comprehensive Logging
-- All errors logged with context
-- Request/response debugging in development
-- Clean error messages in production
-
-### 4. Monitoring Points
-- Queue depth monitoring
-- AI service response times
+### Enhanced Monitoring Points
+- RSS queue depth monitoring
+- AI search success rates by category
+- RSS AI service response times  
+- Search AI service response times
+- **URL validation success rates**
+- **Keyword extraction performance**
 - Database connection health
-- Discord webhook status
+- Discord webhook status (both services)
 
-## Security Considerations
+## Security Considerations (Enhanced)
 
-### 1. Environment Variables
-- Sensitive data in `.env` files
-- No hardcoded API keys or credentials
-- Environment-specific configurations
+### Dual API Key Management
+- **Separate API keys** for different AI services
+- **Independent rate limiting** and quotas
+- **Service-specific security policies**
 
-### 2. Database Security
-- Connection string with SSL options
-- Parameterized queries to prevent injection
-- Limited database permissions
+### Enhanced Configuration Security
+- **Webhook URL protection** in configuration
+- **Search prompt injection prevention**
+- **Category-based access control**
+- **URL validation** to prevent malicious links
 
-### 3. External API Security
-- API key rotation support
-- Rate limiting awareness
-- Timeout configurations
+## Performance Characteristics (Enhanced)
 
-## Scalability Design
+### RSS Processing (Existing)
+- **RSS Processing**: ~100 feeds/minute
+- **AI Summarization**: Limited by API rate limits
+- **Database Operations**: ~1000 ops/second
 
-### 1. Horizontal Scaling
-- Multiple worker processes supported
-- Redis queue distributes load
-- Stateless worker design
+### AI Search (Enhanced)
+- **Search Processing**: ~10 categories/hour (configurable)
+- **Search AI Calls**: Limited by search API rate limits
+- **URL Processing**: ~500 URLs/second validation
+- **Keyword Extraction**: ~1000 articles/second
+- **Direct Discord Delivery**: ~50 embeds/minute
 
-### 2. Database Optimization
-- Indexed URL column for fast lookups
-- Efficient deduplication queries
-- Configurable connection pooling
+### Resource Usage (Updated)
+- **Memory**: ~250MB per main process (increased for dual AI services)
+- **CPU**: Higher usage for keyword extraction and URL processing
+- **Network**: Higher bandwidth for search API calls and URL validation
+- **Storage**: RSS articles only (search results not stored)
 
-### 3. Memory Management
-- Streaming content processing
-- Limited job batch sizes
-- Automatic resource cleanup
+## Future Enhancements (Updated)
 
-## Deployment Architecture
+### Planned Features
+1. **Advanced Keyword Extraction**: ML-based keyword detection
+2. **Multi-language Search**: Support search in different languages
+3. **Search Result Ranking**: AI-powered relevance scoring
+4. **Hybrid Search**: Combine RSS and search results
+5. **Real-time Search**: WebSocket-based live news updates
+6. **URL Preview Generation**: Rich link previews for Discord
 
-### Development
-```
-Local Machine:
-├── Node.js processes
-├── Local Redis instance
-├── Local PostgreSQL
-└── Direct API access
-```
+### Integration Improvements
+1. **Unified Dashboard**: Monitor both RSS and search pipelines
+2. **Cross-service Analytics**: Compare RSS vs search performance
+3. **Intelligent Scheduling**: Adaptive timing based on news activity
+4. **Content Correlation**: Link RSS articles with search results
+5. **Enhanced URL Intelligence**: Domain reputation and content validation
 
-### Production
+## Deployment Considerations (Enhanced)
+
+### Environment Requirements
+- **Dual AI API Access**: Both summarization and search APIs
+- **Increased Network Bandwidth**: For search API calls and URL validation
+- **Enhanced Monitoring**: Track both processing pipelines
+- **URL Validation Services**: Optional external URL checking
+
+### Production Architecture
 ```
 Production Server:
 ├── PM2 Process Manager
-│   ├── Main Process (1 instance)
-│   └── Worker Processes (N instances)
-├── Redis Cluster
-├── PostgreSQL with replication
-└── Reverse Proxy (nginx)
-```
-
-## Performance Characteristics
-
-### Throughput
-- **RSS Processing**: ~100 feeds/minute
-- **AI Processing**: Limited by API rate limits
-- **Database Operations**: ~1000 ops/second
-- **Discord Notifications**: ~50 messages/minute (webhook limits)
-
-### Resource Usage
-- **Memory**: ~200MB per worker process
-- **CPU**: Low usage except during AI processing
-- **Network**: Bandwidth dependent on article content size
-- **Storage**: ~1KB per processed article
-
-## Monitoring and Observability
-
-### Key Metrics
-- Articles processed per hour
-- AI processing success rate
-- Average response times
-- Queue depth and processing lag
-- Error rates by component
-
-### Health Checks
-- Database connectivity
-- Redis availability
-- AI service accessibility
-- Discord webhook status
-
-### Alerting
-- Queue backlog thresholds
-- Error rate spikes
-- Service downtime detection
-- Resource exhaustion warnings
-
-## Future Enhancements
-
-### Planned Features
-1. **Web Dashboard**: Real-time monitoring interface
-2. **Multiple Languages**: Support for other languages besides Vietnamese
-3. **Content Classification**: Automatic categorization beyond manual config
-4. **Sentiment Analysis**: Mood detection in article summaries
-5. **Advanced Filtering**: User-configurable content filters
-
-### Scalability Improvements
-1. **Microservices**: Split into smaller, focused services
-2. **Event Streaming**: Apache Kafka for high-throughput scenarios
-3. **Caching Layer**: Redis caching for frequently accessed content
-4. **Load Balancing**: Multiple AI provider support with failover 
+│   ├── Main Process (RSS + AI Search)
+│   └── Worker Processes (RSS Processing)
+├── Redis Cluster (RSS jobs only)
+├── PostgreSQL (RSS articles only)
+├── Dual AI API Connections
+│   ├── Summarization API (Groq/OpenAI)
+│   └── Search API (Perplexity/OpenAI Search)
+├── Discord Webhooks (Multiple categories)
+└── URL Validation & Keyword Processing
+``` 
