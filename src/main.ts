@@ -3,19 +3,62 @@ import { createServiceLogger } from './utils/logger';
 import { loadConfig } from './services/config';
 import { fetchFeed } from './services/feed';
 import { pushJob } from './services/queue';
+import { isArticleProcessed } from './services/db';
 import cron from 'node-cron';
 import { formatInTimeZone } from 'date-fns-tz';
 
 const logger = createServiceLogger('producer');
+
+function isToday(dateString: string | undefined): boolean {
+  if (!dateString) return false;
+  
+  const articleDate = new Date(dateString);
+  const today = new Date();
+  
+  // Reset time to start of day for comparison
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const articleStart = new Date(articleDate.getFullYear(), articleDate.getMonth(), articleDate.getDate());
+  
+  return todayStart.getTime() === articleStart.getTime();
+}
 
 async function processFeeds() {
   try {
     const config = await loadConfig();
     for (const feed of config.feeds) {
       const items = await fetchFeed(feed.url);
+      
+      logger.info(`Fetched ${items.length} items from ${feed.name}`);
+      
       for (const item of items) {
+        const url = item.link || item.guid || '';
+        
+        if (!url) {
+          logger.debug('Skipping item without URL', { title: item.title });
+          continue;
+        }
+        
+        // Check if article is from today
+        if (!isToday(item.isoDate)) {
+          logger.debug('Skipping article not from today', { 
+            url, 
+            title: item.title,
+            published: item.isoDate 
+          });
+          continue;
+        }
+        
+        // Check if article is already processed
+        if (await isArticleProcessed(url)) {
+          logger.debug('Skipping already processed article', { 
+            url, 
+            title: item.title 
+          });
+          continue;
+        }
+        
         await pushJob({
-          url: item.link || item.guid || '',
+          url,
           feedName: feed.name,
           category: feed.category || '',
           css_selector: feed.css_selector || '',
@@ -23,6 +66,12 @@ async function processFeeds() {
             title: item.title,
             published: item.isoDate
           }
+        });
+        
+        logger.info('Added job to queue', { 
+          url, 
+          title: item.title,
+          feed: feed.name 
         });
       }
     }
