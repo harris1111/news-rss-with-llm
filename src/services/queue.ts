@@ -28,6 +28,8 @@ export interface QueueJob {
   meta?: {
     title?: string;
     published?: string;
+    content?: string;        // RSS content as fallback
+    description?: string;    // RSS description as additional fallback
   };
 }
 

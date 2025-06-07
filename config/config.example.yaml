@@ -26,6 +26,12 @@ default_notify_telegram: false
 default_telegram_bot_token: ""
 default_telegram_chat_id: ""
 
+# RSS Processing configuration
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today (skip older articles)
+  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+
 # Processing configuration
 processing_delay:
   min_seconds: 30

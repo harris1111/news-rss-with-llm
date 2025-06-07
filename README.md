@@ -194,6 +194,12 @@ scheduling:
       minutes: 120    # Run every 2 hours
     timezone: "Asia/Ho_Chi_Minh"
 
+# RSS processing configuration
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today (skip older articles)
+  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+
 # AI configuration for RSS summarization
 ai_summarization:
   enabled: true
@@ -220,6 +226,32 @@ feeds:
     category: "Technology"
     css_selector: ".fck_detail"
 ```
+
+### RSS Processing Options
+
+Configure RSS processing behavior with these options:
+
+```yaml
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today (skip older articles)  
+  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+```
+
+**Configuration Details:**
+
+- **`enabled`**: Set to `false` to completely disable RSS processing while keeping the AI search service active
+- **`today_only`**: When `true`, only articles published today will be processed (helps reduce noise from old articles when starting)
+- **`max_articles_per_feed`**: Limits the number of articles processed per RSS feed per run (useful for high-volume feeds)
+  - Set to `0`, `null`, or omit for no limit
+  - Helps control processing time and resource usage
+  - Articles are processed in the order they appear in the RSS feed (usually newest first)
+
+**Example Use Cases:**
+- **Initial setup**: Set `today_only: true` and `max_articles_per_feed: 10` to avoid processing thousands of old articles
+- **High-volume feeds**: Use `max_articles_per_feed: 20` to limit processing time
+- **Maintenance mode**: Set `enabled: false` to disable RSS processing while keeping AI search active
+- **Historical processing**: Set `today_only: false` to process all articles (useful for catching up after downtime)
 
 ## Usage
 
@@ -360,8 +392,13 @@ The system uses two types of AI processing across separate services:
 - **Vietnamese language prompts** for accurate local content
 - **Customizable summary prompts** via configuration
 - **Multiple extraction strategies** for reliable results
-- **Fallback mechanisms** for error handling
+- **Intelligent fallback mechanisms** for error handling
+  - **Web scraping with retry logic** (3 attempts with exponential backoff)
+  - **RSS content fallback** when scraping fails (handles CDATA, HTML cleaning)
+  - **RSS description fallback** for additional content sources
+  - **Content length prioritization** to use the most substantial content available
 - **Clean output filtering** to remove unwanted text
+- **Anti-bot protection handling** for sites like The Hacker News
 
 ### AI News Search (AI Search Service)
 - **Search-enabled AI models** (Perplexity Sonar, etc.)
