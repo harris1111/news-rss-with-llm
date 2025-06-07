@@ -60,7 +60,7 @@ async function processAISearch() {
 
 function startScheduling(schedulingConfig: any, processFunction: () => Promise<void>, name: string) {
   switch (schedulingConfig.mode) {
-    case 'interval':
+    case 'interval': {
       if (!schedulingConfig.interval?.minutes) {
         throw new Error(`${name} interval minutes not configured`);
       }
@@ -70,29 +70,35 @@ function startScheduling(schedulingConfig: any, processFunction: () => Promise<v
         intervalMinutes: schedulingConfig.interval.minutes
       });
       break;
-      
-    case 'cron':
+    }
+
+    case 'cron': {
       if (!schedulingConfig.cron?.expression) {
         throw new Error(`${name} cron expression not configured`);
       }
       const { expression, timezone } = schedulingConfig.cron;
       const tz = timezone || schedulingConfig.timezone || 'UTC';
-      cron.schedule(expression, () => {
-        const now = new Date();
-        const zonedTime = formatInTimeZone(now, tz, 'yyyy-MM-dd HH:mm:ss');
-        logger.debug(`${name} cron job triggered`, { time: zonedTime });
-        processFunction();
-      }, { timezone: tz });
+      cron.schedule(
+        expression,
+        () => {
+          const now = new Date();
+          const zonedTime = formatInTimeZone(now, tz, 'yyyy-MM-dd HH:mm:ss');
+          logger.debug(`${name} cron job triggered`, { time: zonedTime });
+          processFunction();
+        },
+        { timezone: tz }
+      );
       logger.info(`Started ${name} cron-based scheduling`, {
         expression,
         timezone: tz
       });
       break;
-      
+    }
+
     case 'manual':
       logger.info(`${name} running in manual mode - no automatic scheduling`);
       break;
-      
+
     default:
       throw new Error(`Unknown scheduling mode for ${name}: ${schedulingConfig.mode}`);
   }
