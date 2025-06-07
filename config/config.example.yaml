@@ -1,0 +1,131 @@
+# NewsRSS Configuration Example
+# Copy this file to config.yaml and customize with your actual values
+
+# Discord webhook configuration
+discord:
+  default_webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"  # Your default webhook URL
+  categories:
+    World: ""  # Optional: category-specific webhook URL
+    News: ""
+    Business: "https://discord.com/api/webhooks/YOUR_BUSINESS_WEBHOOK_ID/YOUR_BUSINESS_WEBHOOK_TOKEN"
+    Startup: ""
+    Entertainment: ""
+    Law: ""
+    Education: ""
+    Health: ""
+    Lifestyle: ""
+    Travel: ""
+    Technology: "https://discord.com/api/webhooks/YOUR_TECH_WEBHOOK_ID/YOUR_TECH_WEBHOOK_TOKEN"
+    Security: ""
+    Programming: ""
+    DevOps: ""
+    Other: ""
+
+# Telegram configuration (legacy - optional)
+default_notify_telegram: false
+default_telegram_bot_token: ""
+default_telegram_chat_id: ""
+
+# Processing configuration
+processing_delay:
+  min_seconds: 30
+  max_seconds: 60
+
+# Retry configuration
+retry:
+  max_attempts: 3
+  initial_delay_seconds: 5
+  backoff_strategy: exponential
+
+# Scheduling configuration - now supports two separate schedules
+scheduling:
+  # RSS feed processing (existing feature)
+  rss_processing:
+    mode: "interval"  # Options: "interval", "cron", "manual"
+    interval:
+      minutes: 30     # Run every 30 minutes
+    cron:
+      expression: "0 */2 * * *"  # Run every 2 hours (used if mode is "cron")
+      timezone: "Asia/Ho_Chi_Minh"
+  
+  # AI search feature (new feature)
+  ai_search:
+    enabled: true
+    mode: "interval"  # Options: "interval", "cron", "manual"
+    interval:
+      minutes: 120    # Run every 2 hours
+    cron:
+      expression: "0 */4 * * *"  # Run every 4 hours (used if mode is "cron")
+      timezone: "Asia/Ho_Chi_Minh"
+
+# AI configuration for RSS summarization (existing feature)
+ai_summarization:
+  enabled: true
+  # Custom summary prompt - if not provided, uses default Vietnamese prompt
+  summary_prompt: |
+    Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
+
+    Bài báo: {{content}}
+
+    Trả lời theo định dạng:
+    SUMMARY: [tóm tắt bằng tiếng Việt]
+    KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]
+
+# AI search categories configuration (new feature)
+ai_search_categories:
+  ai-news:
+    enabled: true
+    category: "Artificial Intelligence"
+    search_prompt: |
+      Search for the latest 10 news articles about artificial intelligence, machine learning, AI research, and AI applications published today. 
+      Focus on recent developments, breakthroughs, product launches, and industry news.
+    discord_webhook: "https://discord.com/api/webhooks/YOUR_AI_NEWS_WEBHOOK_ID/YOUR_AI_NEWS_WEBHOOK_TOKEN"
+  
+  tech-news:
+    enabled: true
+    category: "Technology"
+    search_prompt: |
+      Search for the latest 10 technology news articles published today. 
+      Include topics like software development, hardware releases, tech companies, cybersecurity, and digital innovations.
+    discord_webhook: "https://discord.com/api/webhooks/YOUR_TECH_NEWS_WEBHOOK_ID/YOUR_TECH_NEWS_WEBHOOK_TOKEN"
+  
+  startup-news:
+    enabled: false  # Disabled by default
+    category: "Startup"
+    search_prompt: |
+      Search for the latest 10 startup and entrepreneurship news articles published today.
+      Focus on funding rounds, new ventures, unicorn companies, and business developments.
+    discord_webhook: ""  # Empty means use default webhook
+
+  crypto-news:
+    enabled: false  # Example additional category
+    category: "Cryptocurrency"
+    search_prompt: |
+      Search for the latest 10 cryptocurrency and blockchain news articles published today.
+      Focus on market movements, regulatory news, new protocols, and adoption developments.
+    discord_webhook: ""
+
+# RSS feed configuration (existing feature)
+feeds:
+  # Example Vietnamese news feeds
+  - name: "VnExpress Technology"
+    url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+    category: "Technology"
+    css_selector: ".fck_detail"
+  
+  # Example English news feeds (commented out by default)
+  # - name: "TechCrunch"
+  #   url: "https://techcrunch.com/feed/"
+  #   category: "Technology"
+  #   css_selector: ".article-content"
+  
+  # - name: "Hacker News"
+  #   url: "https://feeds.feedburner.com/oreilly/radar"
+  #   category: "Programming"
+  #   css_selector: ".post-content"
+  
+  # Add your RSS feeds here following this format:
+  # - name: "Feed Name"
+  #   url: "https://example.com/rss.xml"
+  #   category: "Category"  # Should match one of the discord categories above
+  #   css_selector: ".content"  # CSS selector for article content extraction 
