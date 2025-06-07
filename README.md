@@ -1,42 +1,45 @@
 # NewsRSS
 
-A self-hosted RSS feed processor that uses AI to summarize articles and send notifications.
+A self-hosted RSS feed processor that uses AI to summarize articles and send notifications. Features Vietnamese AI processing and clean Discord notifications.
 
 ## Features
 
 - RSS feed monitoring and processing
-- AI-powered article summarization
-- Discord notifications (plain text, no embed)
-- Redis-based job queue
-- PostgreSQL database for article storage
+- AI-powered article summarization (Vietnamese language)
+- Clean Discord notifications with hyperlinked titles
+- Redis-based job queue for scalability
+- PostgreSQL database with Knex migrations
 - Configurable feed sources
+- Environment-based logging (production/development)
+- Robust error handling and fallbacks
 
 ## Notification Format
 
 Notifications sent to Discord will look like this:
 
 ```
-Được và mất khi thế giới chuyển sang năng lượng sạch
-"Việc chuyển sang năng lượng sạch đang trở thành vấn đề quan trọng nhất hiện nay, tuy nhiên, còn một vấn đề rất phức tạp khác là chi phí. Chi phí của các công nghệ mới này có thể cao hơn hẳn so với các phương pháp nhiệt điện truyền thống. ĐỒ Ở ĐÂU LÀ GIÁ TRỊ THÀNH PHẨU CỦA NĂNG LƯỢNG SẠCH?"
+[Việt Nam - Estonia hợp tác về chuyển đổi số và kinh tế số] (clickable link)
+"Trong chuyến thăm của Thủ tướng Phạm Minh Chính đến Estonia, Bộ Khoa học và Công nghệ Việt Nam đã ký bản ghi nhớ về hợp tác chuyển đổi số và kinh tế số với Bộ Tư pháp và Chuyển đổi số Estonia. Việc ký bản ghi nhớ mở ra triển vọng hợp tác song phương trong các lĩnh vực như phát triển hạ tầng số, ứng dụng công nghệ và đào tạo nguồn nhân lực chất lượng cao."
 Keywords
-Tin tức, Năng lượng sạch, Chi phí
+Chuyển đổi số, Kinh tế số, Giáo dục, Khoa học và công nghệ, Hợp tác quốc tế
 ```
 
-- **Title**: plain text, no hyperlink
-- **Summary**: in quotes, immediately after the title
-- **Keywords**: always shown, with the label `Keywords`, comma-separated
-- **No introductory/boilerplate text**
+**Format Details:**
+- **Title**: Blue clickable hyperlink to article
+- **Summary**: Clean Vietnamese text in quotes (2-3 sentences)
+- **Keywords**: Always shown with "Keywords" label, comma-separated
+- **No boilerplate text** (no "Here is the analysis" etc.)
 
 ## Prerequisites
 
 - Node.js 18+
 - Redis server
 - PostgreSQL server
-- OpenAI-compatible API server (e.g., OpenAI API, local inference server)
+- OpenAI-compatible API server (OpenAI, Groq, local inference server, etc.)
 
 ## Environment Variables
 
-Create a `.env` file in the root directory with the following variables:
+Create a `.env` file in the root directory:
 
 ```env
 # Redis Configuration
@@ -47,12 +50,20 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/newsrss?sslmode=disab
 
 # OpenAI Configuration
 OPENAI_API_KEY=your-api-key
-OPENAI_BASE_URL=https://api.openai.com  # Or your local inference server URL (no /openai/v1)
-OPENAI_TEXT_MODEL=gpt-3.5-turbo  # Or your preferred model
+OPENAI_BASE_URL=https://api.groq.com  # Or https://api.openai.com (without /v1)
+OPENAI_TEXT_MODEL=mixtral-8x7b-32768  # Or gpt-3.5-turbo
 
 # Discord Configuration
 DISCORD_WEBHOOK_URL=your-webhook-url
+
+# Optional: Set log level (production = clean logs, development = detailed)
+NODE_ENV=production
 ```
+
+**API Provider Examples:**
+- **OpenAI**: `OPENAI_BASE_URL=https://api.openai.com`
+- **Groq**: `OPENAI_BASE_URL=https://api.groq.com`
+- **Local Ollama**: `OPENAI_BASE_URL=http://localhost:11434`
 
 ## Installation
 
@@ -67,7 +78,22 @@ DISCORD_WEBHOOK_URL=your-webhook-url
    npm install
    ```
 
-3. Build the project:
+3. Set up environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+4. Set up database:
+   ```bash
+   # Create PostgreSQL database
+   createdb newsrss
+   
+   # Run migrations
+   npm run migrate
+   ```
+
+5. Build the project:
    ```bash
    npm run build
    ```
@@ -78,6 +104,11 @@ Create a `config/config.yaml` file with your feed sources:
 
 ```yaml
 feeds:
+  - name: "VnExpress Technology"
+    url: "https://vnexpress.net/rss/suc-khoe.rss"
+    category: "technology"
+    css_selector: ".fck_detail"
+
   - name: "Tech News"
     url: "https://example.com/feed.xml"
     category: "technology"
@@ -89,37 +120,100 @@ scheduling:
     minutes: 30
   # cron:
   #   expression: "0 */2 * * *"
-  #   timezone: "UTC"
+  #   timezone: "Asia/Ho_Chi_Minh"
 ```
 
 ## Usage
 
-1. Start the main process:
+### Running the Services
+
+1. **Start the main process** (RSS monitoring):
    ```bash
    node dist/main.js
    ```
 
-2. Start the worker process:
+2. **Start the worker process** (AI processing):
    ```bash
    node dist/worker.js
    ```
+
+### Logging Modes
+
+**Production** (clean logs):
+```bash
+NODE_ENV=production node dist/worker.js
+```
+
+**Development** (detailed debugging):
+```bash
+NODE_ENV=development node dist/worker.js
+```
+
+## Scripts
+
+```bash
+# Development
+npm run build          # Build TypeScript
+npm run dev           # Development mode with hot reload
+npm run lint          # Run ESLint
+
+# Database
+npm run migrate       # Run database migrations
+npm run migrate:down  # Rollback migrations
+
+# Production
+npm start            # Start both main and worker processes
+```
 
 ## Architecture
 
 The application consists of several components:
 
 - **Main Process**: Monitors RSS feeds and creates jobs
-- **Worker Process**: Processes jobs and generates summaries
-- **Redis Queue**: Manages job distribution
-- **PostgreSQL Database**: Stores processed articles
-- **Discord Integration**: Sends notifications (plain text)
+- **Worker Process**: Processes jobs, extracts content, and generates AI summaries
+- **Redis Queue**: Manages job distribution between processes
+- **PostgreSQL Database**: Stores processed articles and metadata
+- **AI Service**: Vietnamese language processing with multiple fallback strategies
+- **Discord Integration**: Sends clean, formatted notifications
 
-## Development
+## AI Processing
 
-- `npm run build`: Build the project
-- `npm run dev`: Run in development mode with hot reload
-- `npm run lint`: Run linter
-- `npm run test`: Run tests
+The system uses advanced AI processing with:
+- **Vietnamese language prompts** for accurate local content
+- **Multiple extraction strategies** for reliable results
+- **Fallback mechanisms** for error handling
+- **Clean output filtering** to remove unwanted text
+
+## Error Handling
+
+- **Graceful degradation**: System continues working even if AI fails
+- **Vietnamese fallbacks**: Always returns Vietnamese content
+- **Retry mechanisms**: Automatic retries for transient failures
+- **Comprehensive logging**: Detailed error tracking and debugging
+
+## Deployment
+
+For production deployment:
+
+1. Set `NODE_ENV=production` for clean logs
+2. Use process managers like PM2 or systemd
+3. Set up Redis and PostgreSQL clusters for high availability
+4. Configure reverse proxy (nginx) if needed
+5. Set up monitoring and alerting
+
+## Troubleshooting
+
+**Common Issues:**
+
+1. **AI returns English**: Check `OPENAI_BASE_URL` and model configuration
+2. **Blank keywords**: Enable debug logging to see AI response processing
+3. **Database errors**: Verify `DATABASE_URL` and run migrations
+4. **Missing notifications**: Check Discord webhook URL and permissions
+
+**Debug Mode:**
+```bash
+NODE_ENV=development node dist/worker.js
+```
 
 ## License
 

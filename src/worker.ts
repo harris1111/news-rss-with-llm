@@ -38,6 +38,12 @@ async function processJob() {
     // Process with AI
     const result = await summarizeAndExtract(content, job.meta?.title || '');
     
+    logger.debug('AI processing completed', {
+      title: job.meta?.title,
+      summaryLength: result.summary.length,
+      keywordCount: result.keywords.length
+    });
+    
     // Store in database
     await insertArticle({
       article_url: job.url,
@@ -50,6 +56,11 @@ async function processJob() {
       published_at: job.meta?.published ? new Date(job.meta.published) : new Date(),
       processed_at: new Date(),
       notification_sent: false
+    });
+
+    logger.debug('Sending notification', {
+      title: job.meta?.title || 'No Title',
+      category: job.category
     });
 
     // Send notification

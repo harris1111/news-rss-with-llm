@@ -38,6 +38,13 @@ export async function sendDiscordNotification(
 ): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   
+  logger.debug('Sending Discord notification', {
+    title,
+    category,
+    summaryLength: summary.length,
+    keywordCount: keywords.length
+  });
+  
   if (!webhookUrl) {
     logger.warn('Discord webhook URL not configured, skipping notification');
     return;
@@ -45,8 +52,14 @@ export async function sendDiscordNotification(
 
   try {
     const message = formatDiscordMessage(title, summary, keywords, sourceUrl);
+    
+    logger.debug('Discord message prepared', {
+      embedCount: message.embeds.length,
+      fieldCount: message.embeds[0].fields.length
+    });
+    
     await axios.post(webhookUrl, message);
-    logger.debug('Discord notification sent', {
+    logger.debug('Discord notification sent successfully', {
       title,
       category
     });
