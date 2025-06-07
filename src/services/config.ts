@@ -48,6 +48,15 @@ export interface Config {
   };
 }
 
+/**
+ * Loads and parses the application configuration from a YAML file.
+ *
+ * Reads the configuration file located at `<current working directory>/config/config.yaml`, parses its contents into a {@link Config} object, and applies backward compatibility adjustments for legacy scheduling formats if necessary.
+ *
+ * @returns The parsed and normalized configuration object.
+ *
+ * @throws {Error} If the configuration file cannot be read or parsed.
+ */
 export async function loadConfig(): Promise<Config> {
   try {
     const configPath = path.join(process.cwd(), 'config', 'config.yaml');

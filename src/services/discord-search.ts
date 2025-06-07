@@ -4,6 +4,16 @@ import { loadConfig } from './config';
 
 const logger = createServiceLogger('discord-search-service');
 
+/**
+ * Sends formatted AI search results to a Discord channel via webhook.
+ *
+ * Formats up to 10 articles from the provided {@link searchResult} into a Discord embed, including summaries, sources, generated keywords, and links, and posts the embed to the specified Discord webhook URL.
+ *
+ * @param searchResult - The search results to send, including category and articles.
+ * @param webhookUrl - The Discord webhook URL to which the results will be sent. If not provided, the function exits without sending.
+ *
+ * @throws {Error} If the Discord webhook request fails or returns a non-OK response.
+ */
 export async function sendSearchResultsToDiscord(
   searchResult: SearchResult,
   webhookUrl?: string
@@ -108,6 +118,15 @@ export async function sendSearchResultsToDiscord(
   }
 }
 
+/**
+ * Extracts up to five relevant keywords from an article's title and summary.
+ *
+ * Combines a predefined list of tech and AI-related terms found in the text with prominent words from the title to generate a concise set of keywords.
+ *
+ * @param title - The article's title.
+ * @param summary - The article's summary.
+ * @returns An array of up to five keywords relevant to the article.
+ */
 function generateKeywords(title: string, summary: string): string[] {
   // Combine title and summary for keyword extraction
   const text = `${title} ${summary}`.toLowerCase();
@@ -147,6 +166,15 @@ function generateKeywords(title: string, summary: string): string[] {
   return allKeywords;
 }
 
+/**
+ * Sends search results to the Discord webhook associated with a specific category.
+ *
+ * Resolves the appropriate webhook URL for the given {@link categoryKey} from configuration, falling back to a default webhook if necessary. If no webhook is configured, the function logs a warning and does not send results.
+ *
+ * @param categoryKey - The key identifying the search category whose webhook should receive the results.
+ *
+ * @throws {Error} If an error occurs during configuration loading or while sending results to Discord.
+ */
 export async function sendSearchResultsForCategory(
   searchResult: SearchResult,
   categoryKey: string

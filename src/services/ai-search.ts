@@ -32,6 +32,14 @@ export interface SearchResult {
   totalFound: number;
 }
 
+/**
+ * Performs an AI-powered search for recent news articles in the specified category.
+ *
+ * Sends a structured prompt to the OpenAI API to retrieve up to 10 relevant news articles, each with a title, clean URL, summary, and source. Parses and returns the results in a consistent format, or returns `null` if no articles are found or an error occurs.
+ *
+ * @param searchCategory - The category and prompt details for the news search.
+ * @returns A {@link SearchResult} object containing the category, up to 10 articles, and the total number found, or `null` if no articles are found or an error occurs.
+ */
 export async function searchNewsArticles(
   searchCategory: AISearchCategory
 ): Promise<SearchResult | null> {
@@ -118,6 +126,14 @@ Continue this format for up to 10 articles. Make sure URLs are clean and complet
   }
 }
 
+/**
+ * Parses a raw AI-generated response string into an array of structured news article objects.
+ *
+ * Attempts to extract articles by splitting the response on "ARTICLE" markers and parsing each section for title, URL, summary, and source fields. If no articles are found using this method, falls back to line-by-line parsing to recover article data.
+ *
+ * @param rawResponse - The raw text response from the AI model containing news article information.
+ * @returns An array of article objects with title, summary, and optionally URL and source fields. Returns an empty array if no valid articles are found.
+ */
 function parseSearchResponse(rawResponse: string): Array<{
   title: string;
   url?: string;
@@ -172,6 +188,14 @@ function parseSearchResponse(rawResponse: string): Array<{
   return articles;
 }
 
+/**
+ * Parses a single article section string into an article object with extracted fields.
+ *
+ * Extracts the title, summary, URL (cleaned and validated), and source from the provided section text.
+ *
+ * @param section - The raw text of an article section to parse.
+ * @returns An object containing the parsed article fields.
+ */
 function parseArticleSection(section: string): {
   title: string;
   url?: string;
@@ -200,6 +224,12 @@ function parseArticleSection(section: string): {
   return article;
 }
 
+/**
+ * Cleans and validates a URL string, removing formatting characters and ensuring it is a properly formatted HTTP or HTTPS URL.
+ *
+ * @param url - The input URL string to clean and validate.
+ * @returns The cleaned and validated URL, or an empty string if invalid.
+ */
 function cleanUrl(url: string): string {
   if (!url) return '';
   

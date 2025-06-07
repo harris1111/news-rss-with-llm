@@ -38,6 +38,11 @@ function isToday(dateString: string | undefined): boolean {
   return todayStart.getTime() === articleStart.getTime();
 }
 
+/**
+ * Processes configured RSS feeds, queues new articles published today for further processing.
+ *
+ * Loads feed configuration, fetches items from each feed, and for each article published today that has not already been processed, adds a job to the processing queue with relevant metadata.
+ */
 async function processFeeds() {
   try {
     const config = await loadConfig();
@@ -98,6 +103,11 @@ async function processFeeds() {
   }
 }
 
+/**
+ * Performs AI-driven news article searches for all enabled categories and sends results.
+ *
+ * Loads configuration, iterates over enabled AI search categories, performs searches, and sends found articles to Discord. Logs outcomes and handles errors for each category and the overall process.
+ */
 async function processAISearch() {
   try {
     const config = await loadConfig();
@@ -148,6 +158,17 @@ async function processAISearch() {
   }
 }
 
+/**
+ * Starts scheduling for a process function based on the provided configuration.
+ *
+ * Supports interval-based, cron-based, and manual scheduling modes. Throws an error if required configuration parameters are missing or if the scheduling mode is unknown.
+ *
+ * @param schedulingConfig - The scheduling configuration object specifying the mode and relevant parameters.
+ * @param processFunction - The asynchronous function to be scheduled.
+ * @param name - A descriptive name for the scheduled process, used in logging and error messages.
+ *
+ * @throws {Error} If required configuration parameters are missing or if the scheduling mode is unknown.
+ */
 function startScheduling(schedulingConfig: any, processFunction: () => Promise<void>, name: string) {
   switch (schedulingConfig.mode) {
     case 'interval':
@@ -188,6 +209,12 @@ function startScheduling(schedulingConfig: any, processFunction: () => Promise<v
   }
 }
 
+/**
+ * Initializes the application by loading configuration, setting up scheduling for RSS feed processing and AI-based news searches, and performing initial runs of both processes.
+ *
+ * @remark
+ * Exits the process with a failure code if an error occurs during initialization or scheduling.
+ */
 async function main() {
   try {
     const config = await loadConfig();

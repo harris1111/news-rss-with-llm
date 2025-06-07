@@ -34,6 +34,16 @@ Trả lời theo định dạng:
 SUMMARY: [tóm tắt bằng tiếng Việt]
 KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]`;
 
+/**
+ * Generates a Vietnamese summary and extracts keywords from the given article content and title using OpenAI, with multiple fallback strategies for robust output.
+ *
+ * @param content - The full text of the article to be summarized.
+ * @param title - The title of the article, used for context and as a fallback for keyword extraction.
+ * @returns An object containing the generated summary and an array of keywords.
+ *
+ * @remark
+ * If the AI response is incomplete or malformed, the function applies several fallback methods to ensure a summary and keywords are always returned.
+ */
 export async function summarizeAndExtract(
   content: string,
   title: string
