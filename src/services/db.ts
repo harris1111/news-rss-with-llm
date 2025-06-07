@@ -1,6 +1,6 @@
 import knex from 'knex';
 import { createServiceLogger } from '../utils/logger';
-import knexConfig from '../../knexfile';
+import knexConfig from '../knexfile';
 
 const logger = createServiceLogger('db-service');
 
