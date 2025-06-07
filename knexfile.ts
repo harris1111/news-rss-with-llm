@@ -1,15 +1,16 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required');
+}
+
 export default {
   development: {
     client: 'postgresql',
     connection: {
-      host: process.env.POSTGRES_HOST || 'localhost',
-      port: Number(process.env.POSTGRES_PORT) || 5432,
-      database: process.env.POSTGRES_DB || 'newsrss',
-      user: process.env.POSTGRES_USER || 'postgres',
-      password: process.env.POSTGRES_PASSWORD,
+      connectionString: process.env.DATABASE_URL,
+      ssl: false
     },
     pool: {
       min: 2,
@@ -23,11 +24,8 @@ export default {
   production: {
     client: 'postgresql',
     connection: {
-      host: process.env.POSTGRES_HOST,
-      port: Number(process.env.POSTGRES_PORT) || 5432,
-      database: process.env.POSTGRES_DB,
-      user: process.env.POSTGRES_USER,
-      password: process.env.POSTGRES_PASSWORD,
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
     },
     pool: {
       min: 2,
