@@ -32,7 +32,7 @@ export async function summarizeAndExtract(
   try {
     logger.debug('Starting AI processing', { title });
     
-    const prompt = `Chỉ trả về đúng định dạng sau, không thêm bất kỳ dòng nào ngoài định dạng yêu cầu, không thêm nhãn, tiêu đề phụ, hoặc giải thích.\n{Tiêu đề}\n"{Tóm tắt ngắn gọn nội dung bài báo (2-3 câu)}"\nKeywords\nkw1, kw2, kw3, kw4, kw5\n\nTiêu đề: ${title}\nBài báo: ${content}`;
+    const prompt = `Return only the following format, without adding any lines other than the required format, without adding labels, subheadings, or explanations.\n{Title}\n"{Brief summary of the article's content (2-3 sentences)}"\nKeywords\nkw1, kw2, kw3, kw4, kw5\n\nTitle: ${title}\nArticle: ${content}. Reply all in Vietnamese`;
 
     const response = await openai.chat.completions.create({
       model: MODEL,
