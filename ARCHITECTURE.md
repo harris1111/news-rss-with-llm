@@ -418,14 +418,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: newsrss-rss-main
+    env_file:
+      - .env
     environment:
       - SERVICE_NAME=RSS_MAIN
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/newsrss
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      - postgres
-      - redis
 
   # RSS Worker Process (Article processing)
   newsrss-worker:
@@ -433,14 +429,10 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: newsrss-rss-worker
+    env_file:
+      - .env
     environment:
       - SERVICE_NAME=RSS_WORKER
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/newsrss
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      - postgres
-      - redis
     deploy:
       replicas: 2  # Scale workers as needed
 
@@ -450,23 +442,15 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: newsrss-ai-search
+    env_file:
+      - .env
     environment:
       - SERVICE_NAME=AI_SEARCH
-      - OPENAI_API_KEY_SEARCH=${OPENAI_API_KEY_SEARCH}
-      - OPENAI_BASE_URL_SEARCH=${OPENAI_BASE_URL_SEARCH}
-
-  # Infrastructure Services
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: newsrss
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
 ```
+
+**External Services Required:**
+- **PostgreSQL**: External or managed database service
+- **Redis**: External or managed cache/queue service
 
 ### Service Selection Script (`run-service.sh`)
 
@@ -507,15 +491,16 @@ esac
 ### Environment Requirements
 
 #### RSS Processing Service
-- **Database Access**: PostgreSQL for article storage
-- **Queue Access**: Redis for job management
+- **External Database**: PostgreSQL for article storage (managed service or self-hosted)
+- **External Queue**: Redis for job management (managed service or self-hosted)
 - **AI API Access**: Summarization API (OpenAI, Groq, local)
 - **Discord Webhooks**: RSS notification endpoints
 
-#### AI Search Service
+#### AI Search Service  
 - **AI API Access**: Search-enabled API (Perplexity, OpenAI with search)
 - **Discord Webhooks**: Search result notification endpoints
 - **No Database Dependency**: Stateless operation
+- **No Redis Dependency**: Direct execution without queueing
 
 ### Production Deployment
 
