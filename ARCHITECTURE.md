@@ -2,96 +2,98 @@
 
 ## Overview
 
-NewsRSS is a scalable RSS feed processing system with AI-powered Vietnamese summarization, AI news search capabilities, and Discord notifications. The architecture consists of producer-consumer processes with dual AI services, communicating through Redis queues, with PostgreSQL for persistence.
+NewsRSS is a microservices-based RSS feed processing system with AI-powered Vietnamese summarization and AI news search capabilities. The system consists of two independent applications: RSS Processing Service and AI Search Service, each with their own deployment and scaling characteristics.
 
 ## System Components
 
 ```
-┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
-│                 │    │              │    │                 │
-│   Main Process  │───▶│ Redis Queue  │───▶│ Worker Process  │
-│   (Producer)    │    │  (RSS Jobs)  │    │   (Consumer)    │
-│                 │    │              │    │                 │
-└─────────────────┘    └──────────────┘    └─────────────────┘
-         │                                           │
-         │              ┌──────────────┐             │
-         │              │              │             │
-         └──────────────▶│ AI Search    │             │
-                        │ Service      │             │
-                        │              │             │
-                        └──────────────┘             │
-                                 │                   │
-         ▼                       ▼                   ▼
-┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
-│                 │    │              │    │                 │
-│  PostgreSQL DB  │    │Discord Search│    │  AI Service     │
-│                 │    │  Service     │    │  (Vietnamese)   │
-└─────────────────┘    │ (Enhanced)   │    │                 │
-                       └──────────────┘    └─────────────────┘
-                                                     │
-                                                     ▼
-                                            ┌─────────────────┐
-                                            │                 │
-                                            │ Discord Service │
-                                            │   (RSS Feed)    │
-                                            │                 │
-                                            └─────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        NewsRSS System                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+├─── RSS Processing Service ─────┬─── AI Search Service ──────────┤
+│                                │                                │
+│  ┌──────────────┐              │  ┌──────────────┐              │
+│  │   Main       │              │  │ AI Search    │              │
+│  │  Process     │              │  │    App       │              │
+│  └──────────────┘              │  └──────────────┘              │
+│         │                      │         │                      │
+│         ▼                      │         ▼                      │
+│  ┌──────────────┐              │  ┌──────────────┐              │
+│  │   Redis      │              │  │   Discord    │              │
+│  │   Queue      │              │  │   Search     │              │
+│  └──────────────┘              │  │   Service    │              │
+│         │                      │  └──────────────┘              │
+│         ▼                      │                                │
+│  ┌──────────────┐              │                                │
+│  │   Worker     │              │                                │
+│  │  Process     │              │                                │
+│  └──────────────┘              │                                │
+│         │                      │                                │
+│         ▼                      │                                │
+│  ┌──────────────┐              │                                │
+│  │ PostgreSQL   │              │                                │
+│  │  Database    │              │                                │
+│  └──────────────┘              │                                │
+│                                │                                │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Data Flow
 
-### Main Process (Producer)
-1. **RSS Feed Processing** (Original Feature):
+### RSS Processing Service
+
+#### Main Process (`main.ts`)
+1. **RSS Feed Processing**:
    - Reads RSS feeds from configured sources
-   - Compares against stored articles in PostgreSQL  
+   - Filters articles (today-only, duplicate checking)
    - Creates processing jobs for new articles
    - Pushes jobs to Redis queue
 
-2. **AI Search Processing** (New Feature):
-   - Runs on separate schedule from RSS processing
-   - Uses search-enabled AI models (Perplexity Sonar, etc.)
-   - Searches for current news by category
-   - Sends results directly to Discord (no queue/database)
-
-### Worker Process (Consumer)
-1. **RSS Job Processing** (Original Feature):
+#### Worker Process (`worker.ts`)
+1. **RSS Job Processing**:
    - Pulls jobs from Redis queue
    - Fetches and extracts article content
    - Generates Vietnamese summaries and keywords
    - Saves processed articles to PostgreSQL
    - Sends formatted notifications to Discord
 
+### AI Search Service
+
+#### AI Search Application (`ai-search-app.ts`)
+1. **AI Search Processing**:
+   - Runs on independent schedule from RSS processing
+   - Uses search-enabled AI models (Perplexity Sonar, etc.)
+   - Searches for current news by category
+   - Sends results directly to Discord (no queue/database dependency)
+
 ## Detailed Component Design
 
-### 1. Main Process (`src/main.ts`)
+### RSS Processing Service
 
-**Enhanced Responsibilities:**
-- **RSS feed parsing and monitoring** (existing)
-- **AI search execution** (new)
-- **Dual scheduling system** (new)
+#### 1. Main Process (`src/main.ts`)
+
+**Responsibilities:**
+- **RSS feed parsing and monitoring**
+- **RSS-only scheduling system** 
 - Article deduplication
 - Job queue management
 
-**Dual Scheduling System:**
+**RSS Scheduling System:**
 ```typescript
-// RSS Processing Schedule
+// RSS Processing Schedule Only
 startScheduling(config.scheduling.rss_processing, processFeeds, 'RSS processing');
-
-// AI Search Schedule  
-if (config.scheduling.ai_search?.enabled) {
-  startScheduling(config.scheduling.ai_search, processAISearch, 'AI search');
-}
 ```
 
 **Key Features:**
-- Independent scheduling for RSS and AI search
+- RSS-specific scheduling configuration
 - Today-only filtering for RSS articles
 - Pre-queue duplicate checking
-- Configurable search categories
+- PostgreSQL-based deduplication
 
-### 2. Worker Process (`src/worker.ts`)
+#### 2. Worker Process (`src/worker.ts`)
 
-**Unchanged Responsibilities:**
+**Responsibilities:**
 - Queue job processing (RSS articles only)
 - Content extraction and cleaning
 - AI integration and response processing
@@ -102,11 +104,32 @@ if (config.scheduling.ai_search?.enabled) {
 RSS Job → Content Extraction → AI Processing → Database Storage → Discord Notification
 ```
 
-*Note: AI search results bypass the worker entirely*
+### AI Search Service
 
-### 3. AI Services
+#### 3. AI Search Application (`src/ai-search-app.ts`)
 
-#### 3.1 AI Service (`src/services/ai.ts`) - RSS Summarization
+**Responsibilities:**
+- **Independent AI search scheduling**
+- **Category-based search execution**
+- **Discord search notification management**
+
+**AI Search Scheduling System:**
+```typescript
+// AI Search Schedule Only
+startScheduling(config.scheduling.ai_search, processAISearch, 'AI search');
+```
+
+**Key Features:**
+- Standalone operation (no database dependency)
+- Independent scheduling from RSS processing
+- Category-based search execution
+- Enhanced Discord notifications
+
+## Shared Services
+
+### 4. AI Services
+
+#### 4.1 AI Service (`src/services/ai.ts`) - RSS Summarization
 
 **Enhanced Features:**
 - **Customizable summary prompts** via configuration
@@ -121,7 +144,7 @@ const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_SUMMARY
 const prompt = summaryPrompt.replace('{{content}}', content);
 ```
 
-#### 3.2 AI Search Service (`src/services/ai-search.ts`) - News Search
+#### 4.2 AI Search Service (`src/services/ai-search.ts`) - News Search
 
 **Enhanced Component Design:**
 - **Search-enabled AI models** (Perplexity Sonar, OpenAI with search)
@@ -168,9 +191,9 @@ function cleanUrl(url: string): string {
 }
 ```
 
-### 4. Discord Services
+### 5. Discord Services
 
-#### 4.1 Discord Service (`src/services/discord.ts`) - RSS Notifications
+#### 5.1 Discord Service (`src/services/discord.ts`) - RSS Notifications
 
 **Unchanged Design:**
 - Embed structure with title as hyperlink
@@ -178,7 +201,7 @@ function cleanUrl(url: string): string {
 - Keywords field at bottom
 - Vietnamese content throughout
 
-#### 4.2 Discord Search Service (`src/services/discord-search.ts`) - Search Results
+#### 5.2 Discord Search Service (`src/services/discord-search.ts`) - Search Results
 
 **Enhanced Component Design:**
 - **Rich embed format** for multiple articles
@@ -381,25 +404,226 @@ Schedule Trigger → AI Search → URL Sanitization → Keyword Extraction → E
 4. **Content Correlation**: Link RSS articles with search results
 5. **Enhanced URL Intelligence**: Domain reputation and content validation
 
-## Deployment Considerations (Enhanced)
+## Deployment Architecture
+
+### Docker Deployment (Recommended)
+
+The system uses a single Docker image with service selection via environment variables:
+
+```yaml
+services:
+  # RSS Main Process (Feed monitoring)
+  newsrss-main:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-rss-main
+    environment:
+      - SERVICE_NAME=RSS_MAIN
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/newsrss
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - postgres
+      - redis
+
+  # RSS Worker Process (Article processing)
+  newsrss-worker:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-rss-worker
+    environment:
+      - SERVICE_NAME=RSS_WORKER
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/newsrss
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      replicas: 2  # Scale workers as needed
+
+  # AI Search Service (Independent search)
+  newsrss-ai-search:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: newsrss-ai-search
+    environment:
+      - SERVICE_NAME=AI_SEARCH
+      - OPENAI_API_KEY_SEARCH=${OPENAI_API_KEY_SEARCH}
+      - OPENAI_BASE_URL_SEARCH=${OPENAI_BASE_URL_SEARCH}
+
+  # Infrastructure Services
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: newsrss
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+```
+
+### Service Selection Script (`run-service.sh`)
+
+The Docker image uses an entrypoint script to determine which service to run:
+
+```bash
+#!/bin/bash
+set -e
+
+case "$SERVICE_NAME" in
+  RSS_MAIN)
+    exec node dist/main.js
+    ;;
+  RSS_WORKER)
+    exec node dist/worker.js
+    ;;
+  AI_SEARCH)
+    exec node dist/ai-search-app.js
+    ;;
+  RSS_ALL)
+    node dist/main.js &
+    exec node dist/worker.js
+    ;;
+  *)
+    echo "Unknown service: $SERVICE_NAME"
+    exit 1
+    ;;
+esac
+```
+
+### Service Communication
+
+- **Configuration Sharing**: Both services use mounted `config/` volume
+- **Log Sharing**: Both services write to mounted `logs/` volume
+- **Network Isolation**: Services communicate via Docker bridge network
+- **Independent Scaling**: Each service can be scaled independently
 
 ### Environment Requirements
-- **Dual AI API Access**: Both summarization and search APIs
-- **Increased Network Bandwidth**: For search API calls and URL validation
-- **Enhanced Monitoring**: Track both processing pipelines
-- **URL Validation Services**: Optional external URL checking
 
-### Production Architecture
+#### RSS Processing Service
+- **Database Access**: PostgreSQL for article storage
+- **Queue Access**: Redis for job management
+- **AI API Access**: Summarization API (OpenAI, Groq, local)
+- **Discord Webhooks**: RSS notification endpoints
+
+#### AI Search Service
+- **AI API Access**: Search-enabled API (Perplexity, OpenAI with search)
+- **Discord Webhooks**: Search result notification endpoints
+- **No Database Dependency**: Stateless operation
+
+### Production Deployment
+
+```bash
+# Build and deploy all services
+npm run docker:build
+npm run docker:up
+
+# Monitor services
+npm run docker:logs
+npm run docker:logs:rss
+npm run docker:logs:ai-search
+
+# Scale services independently
+docker-compose up --scale newsrss-app=2
+docker-compose up --scale newsrss-ai-search=1
 ```
-Production Server:
-├── PM2 Process Manager
-│   ├── Main Process (RSS + AI Search)
-│   └── Worker Processes (RSS Processing)
-├── Redis Cluster (RSS jobs only)
-├── PostgreSQL (RSS articles only)
-├── Dual AI API Connections
-│   ├── Summarization API (Groq/OpenAI)
-│   └── Search API (Perplexity/OpenAI Search)
-├── Discord Webhooks (Multiple categories)
-└── URL Validation & Keyword Processing
-``` 
+
+### Manual Deployment
+
+For manual deployment without Docker:
+
+#### RSS Processing Service
+```bash
+# Terminal 1: Main Process
+NODE_ENV=production node dist/main.js
+
+# Terminal 2: Worker Process
+NODE_ENV=production node dist/worker.js
+```
+
+#### AI Search Service
+```bash
+# Terminal 3: AI Search Process
+NODE_ENV=production node dist/ai-search-app.js
+```
+
+### Monitoring & Health Checks
+
+#### Service Health Checks
+- **RSS Service**: Process health, database connectivity, queue status
+- **AI Search Service**: Application health, API connectivity
+- **Infrastructure**: PostgreSQL, Redis health monitoring
+
+#### Docker Health Checks
+```dockerfile
+# RSS Service Health Check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD node -e "console.log('RSS Processing App Health Check OK')" || exit 1
+
+# AI Search Service Health Check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD node -e "console.log('AI Search App Health Check OK')" || exit 1
+```
+
+### Scaling Considerations
+
+#### RSS Processing Service Scaling
+- **Horizontal Scaling**: Multiple worker containers
+- **Database Scaling**: PostgreSQL read replicas
+- **Queue Scaling**: Redis clustering
+- **Resource Requirements**: Higher memory for content processing
+
+#### AI Search Service Scaling
+- **Independent Scaling**: No dependency on RSS service
+- **Stateless Design**: Easy horizontal scaling
+- **API Rate Limits**: Consider search API limitations
+- **Resource Requirements**: Lower memory, network intensive
+
+### Security Architecture
+
+#### Container Security
+- **Non-root User**: All containers run as unprivileged user
+- **Minimal Images**: Alpine-based images for smaller attack surface
+- **Network Segmentation**: Services isolated via Docker networks
+
+#### API Security
+- **Separate API Keys**: Independent credentials for each service
+- **Environment Variables**: Secure credential management
+- **Rate Limiting**: Built-in API rate limit handling
+
+### Configuration Management
+
+#### Shared Configuration
+- **Volume Mounting**: `config/config.yaml` shared between services
+- **Environment Variables**: Service-specific credentials
+- **Runtime Configuration**: No container restart required for config changes
+
+#### Service-Specific Settings
+```yaml
+# RSS Processing Service uses:
+scheduling.rss_processing: { ... }
+ai_summarization: { ... }
+feeds: [ ... ]
+
+# AI Search Service uses:
+scheduling.ai_search: { ... }
+ai_search_categories: { ... }
+```
+
+### Maintenance & Updates
+
+#### Independent Updates
+- **Service Isolation**: Update RSS or AI Search independently
+- **Rolling Updates**: Zero-downtime deployments
+- **Configuration Updates**: Hot-reload without service restart
+
+#### Backup & Recovery
+- **RSS Service**: Database backups, Redis persistence
+- **AI Search Service**: Configuration backup only (stateless)
+- **Shared Resources**: Configuration and logs backup 
