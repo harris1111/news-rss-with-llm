@@ -2,41 +2,57 @@
 
 ## Overview
 
-NewsRSS is a microservices-based RSS feed processing system with AI-powered Vietnamese summarization and AI news search capabilities. The system consists of two independent applications: RSS Processing Service and AI Search Service, each with their own deployment and scaling characteristics.
+NewsRSS is a microservices-based RSS feed processing system with AI-powered multilingual summarization, advanced content scraping, and AI news search capabilities. The system consists of two independent applications with Chrome-based scraping and language-aware AI processing.
+
+**Core Capabilities:**
+- **Dual-mode content scraping**: HTTP (fast) and Chrome (bot-bypassing) extraction modes
+- **Multi-language AI processing**: Vietnamese and English summarization with language-specific prompts
+- **Advanced anti-bot protection**: Chrome remote debugging protocol for protected sites
+- **Intelligent content pipeline**: Multiple fallback strategies for reliable content extraction
 
 ## System Components
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        NewsRSS System                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-├─── RSS Processing Service ─────┬─── AI Search Service ──────────┤
-│                                │                                │
-│  ┌──────────────┐              │  ┌──────────────┐              │
-│  │   Main       │              │  │ AI Search    │              │
-│  │  Process     │              │  │    App       │              │
-│  └──────────────┘              │  └──────────────┘              │
-│         │                      │         │                      │
-│         ▼                      │         ▼                      │
-│  ┌──────────────┐              │  ┌──────────────┐              │
-│  │   Redis      │              │  │   Discord    │              │
-│  │   Queue      │              │  │   Search     │              │
-│  └──────────────┘              │  │   Service    │              │
-│         │                      │  └──────────────┘              │
-│         ▼                      │                                │
-│  ┌──────────────┐              │                                │
-│  │   Worker     │              │                                │
-│  │  Process     │              │                                │
-│  └──────────────┘              │                                │
-│         │                      │                                │
-│         ▼                      │                                │
-│  ┌──────────────┐              │                                │
-│  │ PostgreSQL   │              │                                │
-│  │  Database    │              │                                │
-│  └──────────────┘              │                                │
-│                                │                                │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              NewsRSS System                                     │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+├─── RSS Processing Service ────────────┬─── AI Search Service ──────────────────┤
+│                                       │                                         │
+│  ┌──────────────┐  ┌──────────────┐   │  ┌──────────────┐                      │
+│  │   Main       │  │   Chrome     │   │  │ AI Search    │                      │
+│  │  Process     │  │  Container   │   │  │    App       │                      │
+│  └──────────────┘  └──────────────┘   │  └──────────────┘                      │
+│         │                  │          │         │                              │
+│         ▼                  │          │         ▼                              │
+│  ┌──────────────┐          │          │  ┌──────────────┐                      │
+│  │   Redis      │          │          │  │   Discord    │                      │
+│  │   Queue      │          │          │  │   Search     │                      │
+│  └──────────────┘          │          │  │   Service    │                      │
+│         │                  │          │  └──────────────┘                      │
+│         ▼                  │          │                                         │
+│  ┌──────────────┐          │          │                                         │
+│  │   Worker     │ ◄────────┘          │                                         │
+│  │  Process     │                     │                                         │
+│  │ (Multi-mode  │                     │                                         │
+│  │  Scraping)   │                     │                                         │
+│  └──────────────┘                     │                                         │
+│         │                             │                                         │
+│         ▼                             │                                         │
+│  ┌──────────────┐                     │                                         │
+│  │ PostgreSQL   │                     │                                         │
+│  │  Database    │                     │                                         │
+│  └──────────────┘                     │                                         │
+│                                       │                                         │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+Components:
+- Main Process: RSS monitoring and job creation
+- Chrome Container: Headless browser for advanced scraping  
+- Worker Process: Dual-mode content extraction + AI processing
+- AI Search App: Independent search service
+- Redis Queue: Job management for RSS processing
+- PostgreSQL: Article storage and deduplication
 ```
 
 ## Data Flow
@@ -181,9 +197,10 @@ The system provides granular control over RSS processing behavior through the `r
 
 ```yaml
 rss_processing:
-  enabled: true           # Enable/disable RSS processing entirely
-  today_only: true        # Only process articles from today
-  max_articles_per_feed: 50  # Maximum articles per feed per run
+  enabled: true                    # Enable/disable RSS processing entirely
+  today_only: true                 # Only process articles from today
+  max_articles_per_feed: 50        # Maximum articles per feed per run
+  chrome_url: "http://chrome:9222" # Chrome container URL for advanced scraping
 ```
 
 **Configuration Impact:**
@@ -193,6 +210,7 @@ rss_processing:
 | `enabled` | `true` | Master switch for RSS processing | Maintenance mode, AI-search-only mode |
 | `today_only` | `true` | Filter articles to current day | Reduce noise during initial setup |
 | `max_articles_per_feed` | `50` | Limit articles per RSS feed | Control processing time and resources |
+| `chrome_url` | `http://chrome:9222` | Chrome container endpoint | Configure Chrome scraping connection |
 
 **Processing Logic:**
 1. **Early exit** if `enabled: false`
@@ -303,22 +321,88 @@ feeds:
 - **Intelligent fallback**: RSS content when both scraping modes fail
 - **Content validation**: Ensure minimum content quality for AI processing
 
+### Feed Configuration Architecture
+
+**Complete Feed Configuration:**
+```yaml
+feeds:
+  - name: "Feed Name"                    # Required: Display name
+    url: "https://example.com/rss.xml"   # Required: RSS feed URL  
+    category: "Technology"               # Required: Discord category
+    css_selector: ".article-content"     # Optional: Content selector
+    scraping_mode: 2                     # Optional: 1=HTTP, 2=Chrome (default: 1)
+    language: "en"                       # Optional: "vi"|"en" (default: "vi")
+```
+
+**Configuration Flow:**
+```
+Feed Config → Job Creation → Worker Processing → Language-Aware AI → Discord
+     ↓              ↓              ↓                    ↓               ↓
+  Scraping     Queue Job     Content Extraction    Prompt Selection  Notification
+   Mode         with          (HTTP/Chrome)       (Vietnamese/English)
+              Language
+```
+
+**Feed Processing Pipeline:**
+1. **RSS Parsing**: Extract articles with metadata
+2. **Job Creation**: Include scraping mode and language in job
+3. **Queue Storage**: Redis job with complete processing context
+4. **Worker Processing**: Mode-specific content extraction
+5. **AI Processing**: Language-aware summarization
+6. **Notification**: Formatted Discord message
+
 ## Shared Services
 
 ### 4. AI Services
 
 #### 4.1 AI Service (`src/services/ai.ts`) - RSS Summarization
 
-**Enhanced Features:**
-- **Customizable summary prompts** via configuration
-- **Template variable replacement** (`{{content}}`)
-- **Vietnamese-first design** maintained
-- **Robust extraction** with multiple fallback strategies
+**Multi-Language Architecture:**
+- **Dual-language support**: Vietnamese and English processing
+- **Language-specific prompts**: Separate default prompts for each language
+- **Smart fallback strategies**: Language-appropriate error handling
+- **Customizable prompts**: Override defaults via configuration
+
+**Language-Aware Processing:**
+```typescript
+// Language-specific default prompts
+const DEFAULT_PROMPTS = {
+  vi: `Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
+       Bài báo: {{content}}
+       Trả lời theo định dạng:
+       SUMMARY: [tóm tắt bằng tiếng Việt]
+       KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]`,
+       
+  en: `Summarize the following article in English in 2-3 sentences, then list 5 keywords:
+       Article: {{content}}
+       Respond in this format:
+       SUMMARY: [English summary]
+       KEYWORDS: [keyword 1], [keyword 2], [keyword 3], [keyword 4], [keyword 5]`
+};
+
+// Language-specific system prompts
+const SYSTEM_PROMPTS = {
+  vi: 'Bạn là trợ lý AI. Luôn trả lời bằng tiếng Việt theo đúng định dạng yêu cầu.',
+  en: 'You are an AI assistant. Always respond in English following the exact format requested.'
+};
+
+export async function summarizeAndExtract(
+  content: string,
+  title: string,
+  language: 'vi' | 'en' = 'vi'
+): Promise<AIResponse>
+```
+
+**Language Processing Features:**
+- **Dynamic prompt selection**: Based on feed language configuration
+- **Language-specific error messages**: Appropriate fallback content
+- **Smart keyword extraction**: Language-appropriate keywords and fallbacks
+- **Content detection**: Vietnamese vs English text pattern recognition
 
 **Configuration Integration:**
 ```typescript
 const config = await loadConfig();
-const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_SUMMARY_PROMPT;
+const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_PROMPTS[language];
 const prompt = summaryPrompt.replace('{{content}}', content);
 ```
 
@@ -369,9 +453,70 @@ function cleanUrl(url: string): string {
 }
 ```
 
-### 5. Discord Services
+### 5. Chrome Scraping Service (`src/services/chrome-scraper.ts`)
 
-#### 5.1 Discord Service (`src/services/discord.ts`) - RSS Notifications
+**Chrome Remote Debugging Integration:**
+- **WebSocket-based communication** with Chrome container
+- **Real browser rendering** for JavaScript-heavy sites
+- **Automatic resource management** with tab cleanup
+- **Retry logic** with exponential backoff for reliability
+
+**Chrome Scraper Architecture:**
+```typescript
+class ChromeScraper {
+  async extractContent(url: string, cssSelector?: string): Promise<string> {
+    // 1. Create new Chrome tab via REST API
+    const tab = await this.createTab();
+    
+    // 2. Connect to tab via WebSocket
+    const ws = await this.connectWebSocket(tab.webSocketDebuggerUrl);
+    
+    // 3. Enable Chrome DevTools domains
+    await this.sendCommand(ws, 'Runtime.enable');
+    await this.sendCommand(ws, 'Page.enable');
+    await this.sendCommand(ws, 'DOM.enable');
+    
+    // 4. Navigate and wait for page load
+    await this.sendCommand(ws, 'Page.navigate', { url });
+    await this.waitForPageLoad(ws);
+    
+    // 5. Extract content using DOM API
+    const content = await this.extractContentFromPage(ws, cssSelector);
+    
+    // 6. Cleanup resources
+    await this.closeTab(tab.id);
+    ws.close();
+    
+    return content;
+  }
+}
+```
+
+**Content Extraction Flow:**
+```
+URL Request → Chrome Tab → WebSocket → DOM Query → Content Extract → Cleanup
+     ↓             ↓           ↓          ↓             ↓           ↓
+  HTTP Mode    Tab Creation  DevTools   CSS Selector  Text Clean  Resource
+  Fallback      (REST)      Protocol   or Fallback   & Validate   Release
+```
+
+**Advanced Features:**
+- **CSS selector support**: Same syntax as HTTP mode
+- **Automatic fallbacks**: Default selectors if custom selector fails
+- **JavaScript execution**: Full page rendering with dynamic content
+- **Bot detection bypass**: Real browser fingerprint
+- **Connection pooling**: Reuse Chrome instance across requests
+- **Error handling**: Graceful degradation with detailed logging
+
+**Resource Management:**
+- **Automatic tab cleanup**: Prevents memory leaks
+- **Connection health monitoring**: Reconnection on failure
+- **Instance reuse**: Efficient Chrome container utilization
+- **Timeout handling**: Prevents hanging requests
+
+### 6. Discord Services
+
+#### 6.1 Discord Service (`src/services/discord.ts`) - RSS Notifications
 
 **Unchanged Design:**
 - Embed structure with title as hyperlink
