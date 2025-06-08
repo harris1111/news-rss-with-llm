@@ -1,10 +1,48 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:17-alpine
+    container_name: newsrss-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=newsrss
+      - POSTGRES_USER=newsrss
+      - POSTGRES_PASSWORD=newsrss_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsrss -d newsrss"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache/Queue
+  redis:
+    image: redis:8-alpine
+    container_name: newsrss-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - newsrss-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # Chrome Container for advanced scraping
   chrome:
--    image: gcr.io/zenika-hub/alpine-chrome:123
-+    image: gcr.io/zenika-hub/alpine-chrome:124
+    image: gcr.io/zenika-hub/alpine-chrome:124
     container_name: newsrss-chrome
     restart: unless-stopped
     command:
@@ -35,11 +73,23 @@ services:
       - .env
     environment:
       - SERVICE_NAME=RSS_MAIN
+      - DATABASE_URL=postgresql://newsrss:newsrss_password@postgres:5432/newsrss
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=newsrss
+      - POSTGRES_USER=newsrss
+      - POSTGRES_PASSWORD=newsrss_password
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
     networks:
       - newsrss-network
+    depends_on:
+      - postgres
+      - redis
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('RSS Main Process Health Check OK')"]
       interval: 30s
@@ -57,11 +107,23 @@ services:
       - .env
     environment:
       - SERVICE_NAME=RSS_WORKER
+      - DATABASE_URL=postgresql://newsrss:newsrss_password@postgres:5432/newsrss
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=newsrss
+      - POSTGRES_USER=newsrss
+      - POSTGRES_PASSWORD=newsrss_password
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
     networks:
       - newsrss-network
+    depends_on:
+      - postgres
+      - redis
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('RSS Worker Process Health Check OK')"]
       interval: 30s
@@ -81,16 +143,32 @@ services:
       - .env
     environment:
       - SERVICE_NAME=AI_SEARCH
+      - DATABASE_URL=postgresql://newsrss:newsrss_password@postgres:5432/newsrss
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=newsrss
+      - POSTGRES_USER=newsrss
+      - POSTGRES_PASSWORD=newsrss_password
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
     networks:
       - newsrss-network
+    depends_on:
+      - postgres
+      - redis
     healthcheck:
       test: ["CMD", "node", "-e", "console.log('AI Search Service Health Check OK')"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
 
 networks:
   newsrss-network:
