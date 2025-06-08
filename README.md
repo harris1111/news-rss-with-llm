@@ -1,25 +1,37 @@
 # NewsRSS
 
-A self-hosted RSS feed processor with AI-powered summarization and AI news search capabilities. Built as a microservices architecture with separate applications for RSS processing and AI search.
+A self-hosted RSS feed processor with AI-powered summarization, dual-language support, and AI news search capabilities. Built as a microservices architecture with advanced content scraping and multilingual AI processing.
 
 ## Architecture
 
-NewsRSS uses a single Docker image with multiple service modes:
+NewsRSS uses a single Docker image with multiple service modes and advanced scraping capabilities:
 
 1. **RSS Main Process** (`SERVICE_NAME=RSS_MAIN`): Monitors RSS feeds and creates processing jobs
-2. **RSS Worker Process** (`SERVICE_NAME=RSS_WORKER`): Processes articles and generates AI summaries  
-3. **AI Search Service** (`SERVICE_NAME=AI_SEARCH`): Searches for current news using AI models
+2. **RSS Worker Process** (`SERVICE_NAME=RSS_WORKER`): Processes articles with Chrome/HTTP scraping and AI summarization  
+3. **AI Search Service** (`SERVICE_NAME=AI_SEARCH`): Searches for current news using search-enabled AI models
 4. **RSS All-in-One** (`SERVICE_NAME=RSS_ALL`): Runs both RSS main and worker in one container
+5. **Chrome Browser Service**: Headless Chrome for advanced scraping and bot bypass
 
 ## Features
 
-- **RSS feed monitoring and processing** - Traditional RSS feed processing with Vietnamese AI summarization
+### Core Processing
+- **RSS feed monitoring and processing** - Advanced RSS processing with intelligent content extraction
+- **Dual-mode content scraping** - HTTP (fast) and Chrome (bot-bypassing) scraping modes
+- **Multi-language AI summarization** - Support for Vietnamese and English content processing
 - **AI news search** - Independent search service using search-enabled AI models (Perplexity Sonar, etc.)
+
+### Advanced Capabilities  
+- **Chrome-based scraping** - Real browser rendering to bypass bot detection and handle JavaScript
+- **Language-aware AI processing** - Separate prompts, keywords, and fallbacks for Vietnamese and English
+- **Intelligent content extraction** - CSS selectors with automatic fallbacks and content validation
+- **Anti-bot protection handling** - Retry logic, browser headers, and Chrome fallback for protected sites
+
+### Infrastructure
 - **Single-image microservices** - One Docker image, multiple service modes via environment variables
 - **Clean Discord notifications** with hyperlinked titles and rich formatting
 - **Redis-based job queue** for RSS processing scalability
-- **PostgreSQL database** for RSS article storage
-- **Service selection via environment** - `SERVICE_NAME` determines which service runs
+- **PostgreSQL database** for RSS article storage and deduplication
+- **Chrome container integration** - Seamless integration with headless Chrome for advanced scraping
 - **Environment-based logging** (production/development)
 - **Robust error handling and fallbacks**
 
@@ -134,7 +146,13 @@ OPENAI_TEXT_MODEL_SEARCH=sonar-medium-online  # Or other search model
    npm run docker:up
    ```
 
-**Note**: You'll need external Redis and PostgreSQL services. The Docker Compose only runs the application services.
+**Included Services:**
+- **RSS Main Process**: Feed monitoring and job creation
+- **RSS Worker Process**: Article processing with AI summarization (scalable to 2 replicas)
+- **AI Search Service**: Independent AI news search
+- **Chrome Browser**: Headless Chrome for advanced scraping and bot bypass
+
+**Note**: You'll need external Redis and PostgreSQL services. The Docker Compose runs the application services and Chrome container.
 
 ### Option 2: Manual Installation
 
@@ -167,7 +185,7 @@ OPENAI_TEXT_MODEL_SEARCH=sonar-medium-online  # Or other search model
 
 ## Configuration
 
-Create a `config/config.yaml` file with your feed sources and AI search categories:
+Create a `config/config.yaml` file with your feed sources, scraping modes, and AI search categories:
 
 ```yaml
 # Discord webhook configuration
@@ -175,7 +193,15 @@ discord:
   default_webhook_url: "your-default-webhook-url"
   categories:
     Technology: "your-tech-webhook-url"
+    Security: "your-security-webhook-url"
     AI: "your-ai-webhook-url"
+
+# RSS processing configuration
+rss_processing:
+  enabled: true                    # Enable/disable RSS processing entirely
+  today_only: true                 # Only process articles from today (skip older articles)
+  max_articles_per_feed: 50        # Maximum number of articles to process per RSS feed (0 or null = no limit)
+  chrome_url: "http://chrome:9222" # Chrome container URL for Chrome-based scraping
 
 # Scheduling configuration - separate schedules for each service
 scheduling:
@@ -194,21 +220,16 @@ scheduling:
       minutes: 120    # Run every 2 hours
     timezone: "Asia/Ho_Chi_Minh"
 
-# RSS processing configuration
-rss_processing:
-  enabled: true           # Enable/disable RSS processing entirely
-  today_only: true        # Only process articles from today (skip older articles)
-  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
-
-# AI configuration for RSS summarization
+# AI configuration for RSS summarization (supports custom prompts)
 ai_summarization:
   enabled: true
-  summary_prompt: |
-    Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
-    Bài báo: {{content}}
-    Trả lời theo định dạng:
-    SUMMARY: [tóm tắt bằng tiếng Việt]
-    KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]
+  # Optional: Custom summary prompt (uses language-specific defaults if not provided)
+  # summary_prompt: |
+  #   Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
+  #   Bài báo: {{content}}
+  #   Trả lời theo định dạng:
+  #   SUMMARY: [tóm tắt bằng tiếng Việt]
+  #   KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]
 
 # AI search categories configuration
 ai_search_categories:
@@ -219,12 +240,23 @@ ai_search_categories:
       Search for the latest 10 news articles about artificial intelligence, machine learning, AI research, and AI applications published today.
     discord_webhook: "your-ai-news-webhook-url"
 
-# RSS feed configuration
+# RSS feed configuration with scraping modes and languages
 feeds:
+  # Vietnamese content with HTTP scraping
   - name: "VnExpress Technology"
     url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
     category: "Technology"
     css_selector: ".fck_detail"
+    scraping_mode: 1  # HTTP scraping (fast)
+    language: "vi"    # Vietnamese AI summarization
+  
+  # English content with Chrome scraping (for bot-protected sites)
+  - name: "Cybersecurity Dive"
+    url: "https://www.cybersecuritydive.com/feeds/news/"
+    category: "Security"
+    css_selector: ".main-content"
+    scraping_mode: 2  # Chrome scraping (bypasses bot detection)
+    language: "en"    # English AI summarization
 ```
 
 ### RSS Processing Options
@@ -301,11 +333,25 @@ feeds:
     language: "en"  # English summarization
 ```
 
-**Features:**
+**Language Features:**
 - **Language-specific prompts**: Different AI prompts for Vietnamese and English
 - **Appropriate fallback content**: Error messages in the correct language
 - **Smart keyword extraction**: Language-appropriate keywords and fallbacks
 - **Automatic defaults**: Defaults to Vietnamese if not specified
+
+### Complete Feed Configuration Options
+
+Each RSS feed supports the following configuration options:
+
+```yaml
+feeds:
+  - name: "Feed Name"                    # Required: Display name for the feed
+    url: "https://example.com/rss.xml"   # Required: RSS feed URL
+    category: "Technology"               # Required: Discord category (matches webhook categories)
+    css_selector: ".article-content"     # Optional: CSS selector for content extraction
+    scraping_mode: 2                     # Optional: 1=HTTP (default), 2=Chrome
+    language: "en"                       # Optional: "vi"=Vietnamese (default), "en"=English
+```
 
 **When to use Chrome scraping:**
 - Site returns 403 Forbidden errors
@@ -320,6 +366,39 @@ feeds:
 - **Automatic fallback**: Falls back to default selectors if specified selector fails
 - **Resource cleanup**: Properly closes browser tabs after scraping
 - **Connection pooling**: Reuses Chrome instance for efficiency
+
+### Content Processing Pipeline
+
+The system uses an intelligent content processing pipeline:
+
+1. **RSS Feed Parsing**: Extracts articles with CDATA and HTML content
+2. **Today Filtering**: Optionally filters articles to current day only
+3. **Duplicate Detection**: Pre-queue checking to avoid reprocessing
+4. **Content Extraction**: 
+   - **HTTP Mode**: Fast requests with browser headers and retry logic
+   - **Chrome Mode**: Real browser rendering for protected sites
+5. **AI Summarization**: Language-aware prompts and processing
+6. **Discord Notification**: Rich embeds with proper formatting
+7. **Database Storage**: Article storage for deduplication
+
+### Advanced Configuration
+
+**Processing Control:**
+```yaml
+rss_processing:
+  enabled: true                    # Master enable/disable switch
+  today_only: false                # Process all articles vs today only
+  max_articles_per_feed: 50        # Limit articles per feed per run
+  chrome_url: "http://chrome:9222" # Chrome container endpoint
+```
+
+**AI Customization:**
+```yaml
+ai_summarization:
+  enabled: true
+  summary_prompt: |               # Optional: Override default prompts
+    Custom prompt with {{content}} placeholder
+```
 
 **Example Use Cases:**
 - **Initial setup**: Set `today_only: true` and `max_articles_per_feed: 10` to avoid processing thousands of old articles
