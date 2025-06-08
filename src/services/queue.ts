@@ -25,6 +25,8 @@ export interface QueueJob {
   feedName: string;
   category: string;
   css_selector: string;
+  scraping_mode?: 1 | 2;    // 1 = HTTP, 2 = Chrome
+  language?: 'vi' | 'en';   // Language for AI summarization
   meta?: {
     title?: string;
     published?: string;

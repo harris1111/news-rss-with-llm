@@ -10,6 +10,8 @@ export interface Feed {
   url: string;
   category?: string;
   css_selector?: string;
+  scraping_mode?: 1 | 2; // 1 = HTTP, 2 = Chrome
+  language?: 'vi' | 'en'; // Language for AI summarization
 }
 
 export interface SchedulingConfig {
@@ -35,6 +37,7 @@ export interface RSSProcessingOptions {
   enabled: boolean;
   today_only: boolean;
   max_articles_per_feed?: number;
+  chrome_url?: string; // URL for Chrome container (e.g., 'http://chrome:9222')
 }
 
 export interface Config {
