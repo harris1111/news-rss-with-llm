@@ -10,6 +10,8 @@ export interface Feed {
   url: string;
   category?: string;
   css_selector?: string;
+  scraping_mode?: 1 | 2; // 1 = HTTP, 2 = Chrome
+  language?: 'vi' | 'en'; // Language for AI summarization
 }
 
 export interface SchedulingConfig {
@@ -31,8 +33,16 @@ export interface AISearchCategory {
   discord_webhook?: string;
 }
 
+export interface RSSProcessingOptions {
+  enabled: boolean;
+  today_only: boolean;
+  max_articles_per_feed?: number;
+  chrome_url?: string; // URL for Chrome container (e.g., 'http://chrome:9222')
+}
+
 export interface Config {
   feeds: Feed[];
+  rss_processing?: RSSProcessingOptions;
   scheduling: {
     rss_processing: SchedulingConfig;
     ai_search: SchedulingConfig & { enabled: boolean };
@@ -69,6 +79,20 @@ export async function loadConfig(): Promise<Config> {
           mode: 'manual'
         }
       };
+    }
+    
+    // Set default RSS processing options
+    if (!config.rss_processing) {
+      config.rss_processing = {
+        enabled: true,
+        today_only: true,
+        max_articles_per_feed: 50
+      };
+    } else {
+      // Ensure all properties have defaults
+      config.rss_processing.enabled = config.rss_processing.enabled ?? true;
+      config.rss_processing.today_only = config.rss_processing.today_only ?? true;
+      config.rss_processing.max_articles_per_feed = config.rss_processing.max_articles_per_feed ?? 50;
     }
     
     return config;

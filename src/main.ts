@@ -39,12 +39,34 @@ function isToday(dateString: string | undefined): boolean {
 async function processFeeds() {
   try {
     const config = await loadConfig();
+    
+    // Check if RSS processing is enabled
+    if (!config.rss_processing?.enabled) {
+      logger.info('RSS processing is disabled in configuration');
+      return;
+    }
+    
+    let totalNewArticles = 0;
+    let totalFeedsWithNews = 0;
+    let totalFeedsWithoutNews = 0;
+    
     for (const feed of config.feeds) {
       const items = await fetchFeed(feed.url);
       
       logger.info(`Fetched ${items.length} items from ${feed.name}`);
       
-      for (const item of items) {
+      // Apply max articles limit if configured
+      const maxArticles = config.rss_processing.max_articles_per_feed;
+      const itemsToProcess = maxArticles ? items.slice(0, maxArticles) : items;
+      
+      if (maxArticles && items.length > maxArticles) {
+        logger.info(`Limited to ${maxArticles} articles for ${feed.name} (had ${items.length})`);
+      }
+      
+      let newArticlesInFeed = 0;
+      let todayArticlesInFeed = 0;
+      
+      for (const item of itemsToProcess) {
         const url = item.link || item.guid || '';
         
         if (!url) {
@@ -52,14 +74,19 @@ async function processFeeds() {
           continue;
         }
         
-        // Check if article is from today
-        if (!isToday(item.isoDate)) {
+        // Check if article is from today (only if today_only is enabled)
+        if (config.rss_processing.today_only && !isToday(item.isoDate)) {
           logger.debug('Skipping article not from today', { 
             url, 
             title: item.title,
             published: item.isoDate 
           });
           continue;
+        }
+        
+        // Count articles from today (for logging purposes)
+        if (isToday(item.isoDate)) {
+          todayArticlesInFeed++;
         }
         
         // Check if article is already processed
@@ -76,19 +103,61 @@ async function processFeeds() {
           feedName: feed.name,
           category: feed.category || '',
           css_selector: feed.css_selector || '',
+          scraping_mode: feed.scraping_mode || 1, // Default to HTTP
+          language: feed.language || 'vi', // Default to Vietnamese
           meta: {
             title: item.title,
-            published: item.isoDate
+            published: item.isoDate,
+            content: item.content,
+            description: item.description
           }
         });
         
+        newArticlesInFeed++;
         logger.info('Added job to queue', { 
           url, 
           title: item.title,
           feed: feed.name 
         });
       }
+      
+      // Log results for this feed
+      if (config.rss_processing.today_only) {
+        if (todayArticlesInFeed === 0) {
+          logger.info(`No articles from today found in ${feed.name}`);
+          totalFeedsWithoutNews++;
+        } else {
+          logger.info(`Found ${todayArticlesInFeed} articles from today in ${feed.name}, ${newArticlesInFeed} were new`);
+          if (newArticlesInFeed > 0) {
+            totalFeedsWithNews++;
+          } else {
+            totalFeedsWithoutNews++;
+          }
+        }
+      } else {
+        if (newArticlesInFeed === 0) {
+          logger.info(`No new articles found in ${feed.name}`);
+          totalFeedsWithoutNews++;
+        } else {
+          logger.info(`Found ${newArticlesInFeed} new articles in ${feed.name}`);
+          totalFeedsWithNews++;
+        }
+      }
+      
+      totalNewArticles += newArticlesInFeed;
     }
+    
+    // Log overall summary
+    if (totalNewArticles === 0) {
+      if (config.rss_processing.today_only) {
+        logger.info(`RSS processing completed: No new articles from today found across all feeds`);
+      } else {
+        logger.info(`RSS processing completed: No new articles found across all feeds`);
+      }
+    } else {
+      logger.info(`RSS processing completed: ${totalNewArticles} new articles queued from ${totalFeedsWithNews} feeds (${totalFeedsWithoutNews} feeds had no new articles)`);
+    }
+    
   } catch (error) {
     logger.error('Error in feed processing cycle', {
       error: error instanceof Error ? error.message : String(error)

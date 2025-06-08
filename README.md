@@ -194,6 +194,12 @@ scheduling:
       minutes: 120    # Run every 2 hours
     timezone: "Asia/Ho_Chi_Minh"
 
+# RSS processing configuration
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today (skip older articles)
+  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+
 # AI configuration for RSS summarization
 ai_summarization:
   enabled: true
@@ -220,6 +226,107 @@ feeds:
     category: "Technology"
     css_selector: ".fck_detail"
 ```
+
+### RSS Processing Options
+
+Configure RSS processing behavior with these options:
+
+```yaml
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today (skip older articles)  
+  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+  chrome_url: "http://chrome:9222"  # Chrome container URL for Chrome-based scraping
+```
+
+**Configuration Details:**
+
+- **`enabled`**: Set to `false` to completely disable RSS processing while keeping the AI search service active
+- **`today_only`**: When `true`, only articles published today will be processed (helps reduce noise from old articles when starting)
+- **`max_articles_per_feed`**: Limits the number of articles processed per RSS feed per run (useful for high-volume feeds)
+  - Set to `0`, `null`, or omit for no limit
+  - Helps control processing time and resource usage
+  - Articles are processed in the order they appear in the RSS feed (usually newest first)
+- **`chrome_url`**: URL for the Chrome container used for advanced scraping (when `scraping_mode: 2`)
+
+### Content Scraping Modes
+
+The system supports two scraping modes for extracting article content:
+
+**Mode 1: HTTP Scraping (Default)**
+- Uses traditional HTTP requests with browser-like headers
+- Fast and lightweight
+- Works for most websites
+- May be blocked by sites with strict bot protection
+
+**Mode 2: Chrome Scraping**
+- Uses a real Chrome browser via remote debugging protocol
+- Bypasses most bot detection systems
+- Handles JavaScript-rendered content
+- Slower but more reliable for protected sites
+
+Configure scraping mode and language per RSS feed:
+
+```yaml
+feeds:
+  - name: "Vietnamese News"
+    url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
+    category: "Technology"
+    css_selector: ".fck_detail"
+    scraping_mode: 1  # 1 = HTTP (default), 2 = Chrome
+    language: "vi"    # Vietnamese AI summarization
+    
+  - name: "English News"
+    url: "https://example.com/rss.xml"
+    category: "Technology"
+    css_selector: ".article-content"
+    scraping_mode: 2  # Chrome for bot-protected sites
+    language: "en"    # English AI summarization
+```
+
+### Language Support
+
+The system supports both Vietnamese and English AI summarization:
+
+**Supported Languages:**
+- **`vi`** (Vietnamese) - Default language, uses Vietnamese prompts and keywords
+- **`en`** (English) - Uses English prompts and keywords
+
+**Language Configuration:**
+```yaml
+feeds:
+  - name: "Vietnamese Feed"
+    language: "vi"  # Vietnamese summarization
+  - name: "English Feed"  
+    language: "en"  # English summarization
+```
+
+**Features:**
+- **Language-specific prompts**: Different AI prompts for Vietnamese and English
+- **Appropriate fallback content**: Error messages in the correct language
+- **Smart keyword extraction**: Language-appropriate keywords and fallbacks
+- **Automatic defaults**: Defaults to Vietnamese if not specified
+
+**When to use Chrome scraping:**
+- Site returns 403 Forbidden errors
+- Content is JavaScript-rendered
+- Site has advanced bot detection
+- HTTP scraping consistently fails
+
+**Chrome Scraping Features:**
+- **Real browser rendering**: Executes JavaScript and loads dynamic content
+- **Bot detection bypass**: Uses actual Chrome browser to avoid detection
+- **CSS selector support**: Same selector syntax as HTTP mode
+- **Automatic fallback**: Falls back to default selectors if specified selector fails
+- **Resource cleanup**: Properly closes browser tabs after scraping
+- **Connection pooling**: Reuses Chrome instance for efficiency
+
+**Example Use Cases:**
+- **Initial setup**: Set `today_only: true` and `max_articles_per_feed: 10` to avoid processing thousands of old articles
+- **High-volume feeds**: Use `max_articles_per_feed: 20` to limit processing time
+- **Maintenance mode**: Set `enabled: false` to disable RSS processing while keeping AI search active
+- **Historical processing**: Set `today_only: false` to process all articles (useful for catching up after downtime)
+- **Bot-protected sites**: Use `scraping_mode: 2` for sites that block HTTP requests
 
 ## Usage
 
@@ -360,8 +467,13 @@ The system uses two types of AI processing across separate services:
 - **Vietnamese language prompts** for accurate local content
 - **Customizable summary prompts** via configuration
 - **Multiple extraction strategies** for reliable results
-- **Fallback mechanisms** for error handling
+- **Intelligent fallback mechanisms** for error handling
+  - **Web scraping with retry logic** (3 attempts with exponential backoff)
+  - **RSS content fallback** when scraping fails (handles CDATA, HTML cleaning)
+  - **RSS description fallback** for additional content sources
+  - **Content length prioritization** to use the most substantial content available
 - **Clean output filtering** to remove unwanted text
+- **Anti-bot protection handling** for sites like The Hacker News
 
 ### AI News Search (AI Search Service)
 - **Search-enabled AI models** (Perplexity Sonar, etc.)
