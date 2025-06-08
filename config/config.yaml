@@ -21,6 +21,7 @@ rss_processing:
   enabled: true           # Enable/disable RSS processing entirely
   today_only: false        # Only process articles from today (skip older articles)
   max_articles_per_feed: 10  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+  chrome_url: "http://localhost:9222"  # Chrome container URL for Chrome-based scraping (when scraping_mode: 2)
 # Telegram configuration (legacy)
 default_notify_telegram: false
 default_telegram_bot_token: ""
@@ -95,10 +96,19 @@ feeds:
   #   url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
   #   category: "Technology"
   #   css_selector: ".fck_detail"
-  - name: hackernews
+  #   language: "vi"
+  - name: cybersecuritydive
     url: "https://www.cybersecuritydive.com/feeds/news/"
     category: "Security"
     css_selector: ".main-content"
+    scraping_mode: 2
+    language: "en"    # English content
+  # - name: hackernews
+  #   url: "https://feeds.feedburner.com/TheHackersNews"
+  #   category: "Security"
+  #   css_selector: ".articlebody"
+  #   scraping_mode: 2  # Use Chrome for The Hacker News (bot-protected)
+  #   language: "en"    # English content
   # - name: tuoitre
   #   url: "https://tuoitre.vn/rss/tin-moi-nhat.rss"
   #   css_selector: ".detail-content"

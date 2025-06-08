@@ -103,6 +103,8 @@ async function processFeeds() {
           feedName: feed.name,
           category: feed.category || '',
           css_selector: feed.css_selector || '',
+          scraping_mode: feed.scraping_mode || 1, // Default to HTTP
+          language: feed.language || 'vi', // Default to Vietnamese
           meta: {
             title: item.title,
             published: item.isoDate,

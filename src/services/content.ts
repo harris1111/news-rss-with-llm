@@ -1,8 +1,13 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { createServiceLogger } from '../utils/logger';
+import { createChromeScraper, ChromeScraper } from './chrome-scraper';
+import { loadConfig } from './config';
 
 const logger = createServiceLogger('content-service');
+
+// Cache for Chrome scraper instance
+let chromeScraper: ChromeScraper | null = null;
 
 // Configure axios with browser-like headers to avoid 403 errors
 const httpClient = axios.create({
@@ -23,13 +28,28 @@ const httpClient = axios.create({
   }
 });
 
-export async function extractContent(url: string, cssSelector?: string): Promise<string> {
+export async function extractContent(url: string, cssSelector?: string, scrapingMode?: 1 | 2): Promise<string> {
+  // Determine scraping mode - default to HTTP (1) if not specified
+  const mode = scrapingMode || 1;
+  
+  logger.debug('Extracting content', { url, cssSelector, scrapingMode: mode });
+  
+  if (mode === 2) {
+    // Chrome-based scraping
+    return extractContentWithChrome(url, cssSelector);
+  } else {
+    // HTTP-based scraping (original method)
+    return extractContentWithHttp(url, cssSelector);
+  }
+}
+
+async function extractContentWithHttp(url: string, cssSelector?: string): Promise<string> {
   const maxRetries = 3;
   const baseDelay = 2000; // 2 seconds base delay
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      logger.debug('Extracting content', { url, cssSelector, attempt });
+      logger.debug('HTTP scraping attempt', { url, cssSelector, attempt });
       
       const response = await httpClient.get(url);
       const $ = cheerio.load(response.data);
@@ -72,7 +92,7 @@ export async function extractContent(url: string, cssSelector?: string): Promise
         });
       }
       
-      logger.debug('Content extracted', { 
+      logger.debug('HTTP content extracted', { 
         url,
         contentLength: cleanedContent.length,
         attempt: attempt === 1 ? undefined : attempt
@@ -85,7 +105,7 @@ export async function extractContent(url: string, cssSelector?: string): Promise
       const isLastAttempt = attempt === maxRetries;
       
       // Log the attempt
-      logger.warn(`Content extraction attempt ${attempt}/${maxRetries} failed`, {
+      logger.warn(`HTTP scraping attempt ${attempt}/${maxRetries} failed`, {
         url,
         error: errorMessage,
         willRetry: !isLastAttempt
@@ -96,7 +116,7 @@ export async function extractContent(url: string, cssSelector?: string): Promise
         logger.warn('Website blocked all requests (403 Forbidden)', {
           url,
           totalAttempts: maxRetries,
-          suggestion: 'The website has strong anti-bot protection. Will use RSS content as fallback.'
+          suggestion: 'The website has strong anti-bot protection. Consider using Chrome scraping mode (2).'
         });
       }
       
@@ -114,4 +134,42 @@ export async function extractContent(url: string, cssSelector?: string): Promise
   
   // This should never be reached, but TypeScript needs it
   throw new Error('Maximum retries exceeded');
+}
+
+async function extractContentWithChrome(url: string, cssSelector?: string): Promise<string> {
+  try {
+    // Get Chrome URL from config
+    const config = await loadConfig();
+    const chromeUrl = config.rss_processing?.chrome_url || 'http://chrome:9222';
+    
+    // Initialize Chrome scraper if not already done
+    if (!chromeScraper) {
+      logger.info('Initializing Chrome scraper', { chromeUrl });
+      chromeScraper = await createChromeScraper(chromeUrl);
+    }
+    
+    // Extract content using Chrome
+    const content = await chromeScraper.extractContent(url, cssSelector);
+    
+    logger.debug('Chrome content extracted', {
+      url,
+      contentLength: content.length,
+      cssSelector
+    });
+    
+    return content;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    logger.error('Chrome scraping failed', {
+      url,
+      cssSelector,
+      error: errorMessage
+    });
+    
+    // Reset Chrome scraper instance on failure (will be recreated on next attempt)
+    chromeScraper = null;
+    
+    throw error;
+  }
 } 

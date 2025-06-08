@@ -233,11 +233,75 @@ The system handles various RSS feed formats with intelligent content extraction:
 3. **Content validation** - Prioritize longer, more substantial content
 4. **Fallback chain** - Use best available content source
 
+**Content Scraping Modes:**
+
+The system supports two distinct scraping approaches for content extraction:
+
+**Mode 1: HTTP Scraping (Default)**
+- Traditional HTTP requests with browser-like headers
+- Fast and lightweight operation
+- Works for most standard websites
+- May be blocked by advanced bot protection
+
+**Mode 2: Chrome Scraping (Advanced)**
+- Real Chrome browser via remote debugging protocol
+- Bypasses sophisticated bot detection systems
+- Handles JavaScript-rendered content
+- Slower but more reliable for protected sites
+
+**Chrome Scraping Architecture:**
+```typescript
+// Chrome Remote Debugging Protocol Integration
+class ChromeScraper {
+  async extractContent(url: string, cssSelector?: string): Promise<string> {
+    // 1. Create new Chrome tab
+    const tab = await this.createTab();
+    
+    // 2. Connect via WebSocket
+    const ws = await this.connectWebSocket(tab.webSocketDebuggerUrl);
+    
+    // 3. Enable debugging domains
+    await this.sendCommand(ws, 'Runtime.enable');
+    await this.sendCommand(ws, 'Page.enable');
+    await this.sendCommand(ws, 'DOM.enable');
+    
+    // 4. Navigate and wait for load
+    await this.sendCommand(ws, 'Page.navigate', { url });
+    await this.waitForPageLoad(ws);
+    
+    // 5. Extract content using CSS selectors
+    const content = await this.extractContentFromPage(ws, cssSelector);
+    
+    // 6. Cleanup resources
+    await this.closeTab(tab.id);
+    ws.close();
+    
+    return content;
+  }
+}
+```
+
+**Chrome Container Integration:**
+- **Shared Chrome instance** across multiple scraping requests
+- **Resource pooling** to minimize container overhead
+- **Automatic tab cleanup** to prevent memory leaks
+- **Connection health monitoring** with automatic reconnection
+- **Configurable Chrome URL** via `rss_processing.chrome_url`
+
+**Scraping Mode Selection:**
+```yaml
+feeds:
+  - name: "Standard Site"
+    scraping_mode: 1  # HTTP scraping (fast)
+  - name: "Protected Site" 
+    scraping_mode: 2  # Chrome scraping (reliable)
+```
+
 **Anti-Bot Protection Handling:**
-- **Retry logic** - 3 attempts with exponential backoff (2s, 4s, 8s)
-- **Browser-like headers** - Full Chrome browser simulation
-- **RSS fallback** - Automatic switch to RSS content when scraping fails
-- **Content validation** - Ensure minimum content quality for AI processing
+- **HTTP Mode**: 3 attempts with exponential backoff (2s, 4s, 8s), browser-like headers
+- **Chrome Mode**: Real browser rendering, JavaScript execution, full DOM access
+- **Intelligent fallback**: RSS content when both scraping modes fail
+- **Content validation**: Ensure minimum content quality for AI processing
 
 ## Shared Services
 

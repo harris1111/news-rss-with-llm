@@ -33,10 +33,11 @@ async function processJob() {
     let contentSource = 'web-scraped';
     
     try {
-      content = await extractContent(job.url, job.css_selector);
+      content = await extractContent(job.url, job.css_selector, job.scraping_mode);
       if (!content) {
         throw new Error('No content extracted from web scraping');
       }
+      contentSource = job.scraping_mode === 2 ? 'chrome-scraped' : 'http-scraped';
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.warn('Web scraping failed, trying RSS content fallback', {
@@ -95,7 +96,7 @@ async function processJob() {
     }
 
     // Process with AI
-    const result = await summarizeAndExtract(content, job.meta?.title || '');
+    const result = await summarizeAndExtract(content, job.meta?.title || '', job.language || 'vi');
     
     logger.debug('AI processing completed', {
       title: job.meta?.title,
