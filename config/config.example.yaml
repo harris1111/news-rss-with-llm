@@ -26,6 +26,13 @@ default_notify_telegram: false
 default_telegram_bot_token: ""
 default_telegram_chat_id: ""
 
+# RSS Processing configuration
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today (skip older articles)
+  max_articles_per_feed: 50  # Maximum number of articles to process per RSS feed (0 or null = no limit)
+  chrome_url: "http://chrome:9222"  # Chrome container URL for Chrome-based scraping (when scraping_mode: 2)
+
 # Processing configuration
 processing_delay:
   min_seconds: 30
@@ -112,20 +119,28 @@ feeds:
     url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"
     category: "Technology"
     css_selector: ".fck_detail"
+    scraping_mode: 1  # 1 = HTTP (default), 2 = Chrome
+    language: "vi"    # Vietnamese summarization
   
   # Example English news feeds (commented out by default)
   # - name: "TechCrunch"
   #   url: "https://techcrunch.com/feed/"
   #   category: "Technology"
   #   css_selector: ".article-content"
+  #   scraping_mode: 2  # Use Chrome for sites with strict bot protection
+  #   language: "en"    # English summarization
   
   # - name: "Hacker News"
   #   url: "https://feeds.feedburner.com/oreilly/radar"
   #   category: "Programming"
   #   css_selector: ".post-content"
+  #   scraping_mode: 1  # HTTP is usually fine for most sites
+  #   language: "en"    # English summarization
   
   # Add your RSS feeds here following this format:
   # - name: "Feed Name"
   #   url: "https://example.com/rss.xml"
   #   category: "Category"  # Should match one of the discord categories above
-  #   css_selector: ".content"  # CSS selector for article content extraction 
+  #   css_selector: ".content"  # CSS selector for article content extraction
+  #   scraping_mode: 1  # 1 = HTTP (default), 2 = Chrome (for bot-protected sites)
+  #   language: "vi"    # "vi" for Vietnamese, "en" for English (default: "vi")

@@ -25,25 +25,41 @@ export interface AIResponse {
   keywords: string[];
 }
 
-// Default prompt if none provided in config
-const DEFAULT_SUMMARY_PROMPT = `Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
+// Default prompts for different languages
+const DEFAULT_PROMPTS = {
+  vi: `Tóm tắt bài báo sau bằng tiếng Việt trong 2-3 câu, sau đó liệt kê 5 từ khóa:
 
 Bài báo: {{content}}
 
 Trả lời theo định dạng:
 SUMMARY: [tóm tắt bằng tiếng Việt]
-KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]`;
+KEYWORDS: [từ khóa 1], [từ khóa 2], [từ khóa 3], [từ khóa 4], [từ khóa 5]`,
+
+  en: `Summarize the following article in English in 2-3 sentences, then list 5 keywords:
+
+Article: {{content}}
+
+Respond in this format:
+SUMMARY: [English summary]
+KEYWORDS: [keyword 1], [keyword 2], [keyword 3], [keyword 4], [keyword 5]`
+};
+
+const SYSTEM_PROMPTS = {
+  vi: 'Bạn là trợ lý AI. Luôn trả lời bằng tiếng Việt theo đúng định dạng yêu cầu.',
+  en: 'You are an AI assistant. Always respond in English following the exact format requested.'
+};
 
 export async function summarizeAndExtract(
   content: string,
-  title: string
+  title: string,
+  language: 'vi' | 'en' = 'vi'
 ): Promise<AIResponse> {
   try {
     logger.debug('Starting AI processing', { title });
     
-    // Load config to get custom summary prompt
+    // Load config to get custom summary prompt or use default for language
     const config = await loadConfig();
-    const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_SUMMARY_PROMPT;
+    const summaryPrompt = config.ai_summarization?.summary_prompt || DEFAULT_PROMPTS[language];
     
     // Replace template variable with actual content
     const prompt = summaryPrompt.replace('{{content}}', content);
@@ -52,6 +68,7 @@ export async function summarizeAndExtract(
       model: MODEL,
       promptLength: prompt.length,
       contentLength: content.length,
+      language,
       usingCustomPrompt: !!config.ai_summarization?.summary_prompt
     });
 
@@ -60,7 +77,7 @@ export async function summarizeAndExtract(
       messages: [
         {
           role: 'system' as const,
-          content: 'Bạn là trợ lý AI. Luôn trả lời bằng tiếng Việt theo đúng định dạng yêu cầu.'
+          content: SYSTEM_PROMPTS[language]
         },
         {
           role: 'user' as const,
@@ -98,26 +115,42 @@ export async function summarizeAndExtract(
       logger.debug('Found keywords using KEYWORDS: pattern', { keywordCount: keywords.length });
     }
     
-    // Method 2: Fallback - look for any Vietnamese text
+    // Method 2: Fallback - look for language-appropriate text
     if (!summary || summary.length < 20) {
       const lines = rawResult.split('\n').map(l => l.trim()).filter(l => l);
       
-      // Find longest Vietnamese sentence (contains Vietnamese characters)
-      const vietnameseRegex = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
-      
-      for (const line of lines) {
-        if (vietnameseRegex.test(line) && line.length > 30) {
-          summary = line;
-          logger.debug('Found Vietnamese summary in fallback');
-          break;
+      if (language === 'vi') {
+        // Find longest Vietnamese sentence (contains Vietnamese characters)
+        const vietnameseRegex = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+        
+        for (const line of lines) {
+          if (vietnameseRegex.test(line) && line.length > 30) {
+            summary = line;
+            logger.debug('Found Vietnamese summary in fallback');
+            break;
+          }
+        }
+      } else {
+        // Find longest English line
+        for (const line of lines) {
+          if (line.length > 30 && /^[a-zA-Z0-9\s.,!?-]+$/.test(line)) {
+            summary = line;
+            logger.debug('Found English summary in fallback');
+            break;
+          }
         }
       }
     }
     
-    // Method 3: Create Vietnamese content if all else fails
+    // Method 3: Create language-appropriate content if all else fails
     if (!summary || summary.length < 10) {
-      summary = `Bài báo "${title}" đề cập đến các vấn đề quan trọng và cung cấp thông tin hữu ích cho người đọc.`;
-      logger.debug('Using fallback Vietnamese summary');
+      if (language === 'vi') {
+        summary = `Bài báo "${title}" đề cập đến các vấn đề quan trọng và cung cấp thông tin hữu ích cho người đọc.`;
+        logger.debug('Using fallback Vietnamese summary');
+      } else {
+        summary = `Article "${title}" covers important topics and provides useful information for readers.`;
+        logger.debug('Using fallback English summary');
+      }
     }
     
     if (keywords.length === 0) {
@@ -144,7 +177,7 @@ export async function summarizeAndExtract(
           .slice(0, 5);
         
         if (keywords.length === 0) {
-          keywords = ['Tin tức', 'Thông tin', 'Báo chí'];
+          keywords = language === 'vi' ? ['Tin tức', 'Thông tin', 'Báo chí'] : ['News', 'Information', 'Article'];
         }
         logger.debug('Using fallback keywords from title');
       }
@@ -161,6 +194,7 @@ export async function summarizeAndExtract(
     
     logger.debug('AI processing completed', {
       title,
+      language,
       summaryLength: summary.length,
       keywordCount: keywords.length
     });
@@ -169,13 +203,16 @@ export async function summarizeAndExtract(
   } catch (error) {
     logger.error('Error in AI processing', {
       error: error instanceof Error ? error.message : String(error),
-      title
+      title,
+      language
     });
     
-    // Return Vietnamese fallback content
+    // Return language-appropriate fallback content
     return {
-      summary: `Tóm tắt bài báo "${title}" không khả dụng do lỗi xử lý.`,
-      keywords: ['Tin tức', 'Thông tin', 'Báo chí']
+      summary: language === 'vi' 
+        ? `Tóm tắt bài báo "${title}" không khả dụng do lỗi xử lý.`
+        : `Summary for article "${title}" is not available due to processing error.`,
+      keywords: language === 'vi' ? ['Tin tức', 'Thông tin', 'Báo chí'] : ['News', 'Information', 'Article']
     };
   }
 } 

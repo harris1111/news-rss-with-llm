@@ -25,9 +25,13 @@ export interface QueueJob {
   feedName: string;
   category: string;
   css_selector: string;
+  scraping_mode?: 1 | 2;    // 1 = HTTP, 2 = Chrome
+  language?: 'vi' | 'en';   // Language for AI summarization
   meta?: {
     title?: string;
     published?: string;
+    content?: string;        // RSS content as fallback
+    description?: string;    // RSS description as additional fallback
   };
 }
 

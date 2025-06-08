@@ -46,14 +46,20 @@ NewsRSS is a microservices-based RSS feed processing system with AI-powered Viet
 #### Main Process (`main.ts`)
 1. **RSS Feed Processing**:
    - Reads RSS feeds from configured sources
+   - **Enhanced RSS content parsing** with CDATA handling and HTML cleaning
+   - **Content prioritization** (content:encoded > description > fallback)
    - Filters articles (today-only, duplicate checking)
-   - Creates processing jobs for new articles
+   - Creates processing jobs with RSS content as fallback data
    - Pushes jobs to Redis queue
 
 #### Worker Process (`worker.ts`)
 1. **RSS Job Processing**:
    - Pulls jobs from Redis queue
-   - Fetches and extracts article content
+   - **Multi-layer content extraction**:
+     - Primary: Web scraping with 3 retry attempts and exponential backoff
+     - Fallback 1: RSS content (cleaned from CDATA/HTML)
+     - Fallback 2: RSS description (for sites with limited content)
+   - **Intelligent content validation** and length checking
    - Generates Vietnamese summaries and keywords
    - Saves processed articles to PostgreSQL
    - Sends formatted notifications to Discord
@@ -76,6 +82,7 @@ NewsRSS is a microservices-based RSS feed processing system with AI-powered Viet
 **Responsibilities:**
 - **RSS feed parsing and monitoring**
 - **RSS-only scheduling system** 
+- **Configurable RSS processing controls**
 - Article deduplication
 - Job queue management
 
@@ -85,9 +92,50 @@ NewsRSS is a microservices-based RSS feed processing system with AI-powered Viet
 startScheduling(config.scheduling.rss_processing, processFeeds, 'RSS processing');
 ```
 
+**RSS Processing Configuration:**
+```typescript
+interface RSSProcessingOptions {
+  enabled: boolean;                    // Enable/disable RSS processing
+  today_only: boolean;                 // Filter articles to today only
+  max_articles_per_feed?: number;      // Limit articles per feed
+}
+```
+
+**Enhanced Processing Flow:**
+```typescript
+async function processFeeds() {
+  const config = await loadConfig();
+  
+  // Check if RSS processing is enabled
+  if (!config.rss_processing?.enabled) {
+    logger.info('RSS processing is disabled in configuration');
+    return;
+  }
+  
+  for (const feed of config.feeds) {
+    const items = await fetchFeed(feed.url);
+    
+    // Apply max articles limit if configured
+    const maxArticles = config.rss_processing.max_articles_per_feed;
+    const itemsToProcess = maxArticles ? items.slice(0, maxArticles) : items;
+    
+    for (const item of itemsToProcess) {
+      // Check if article is from today (only if today_only is enabled)
+      if (config.rss_processing.today_only && !isToday(item.isoDate)) {
+        continue; // Skip old articles
+      }
+      
+      // Process article...
+    }
+  }
+}
+```
+
 **Key Features:**
+- **Configurable RSS processing enable/disable**
+- **Today-only filtering control** (configurable)
+- **Article limit per feed** (configurable)
 - RSS-specific scheduling configuration
-- Today-only filtering for RSS articles
 - Pre-queue duplicate checking
 - PostgreSQL-based deduplication
 
@@ -124,6 +172,136 @@ startScheduling(config.scheduling.ai_search, processAISearch, 'AI search');
 - Independent scheduling from RSS processing
 - Category-based search execution
 - Enhanced Discord notifications
+
+## Configuration Architecture
+
+### RSS Processing Options
+
+The system provides granular control over RSS processing behavior through the `rss_processing` configuration section:
+
+```yaml
+rss_processing:
+  enabled: true           # Enable/disable RSS processing entirely
+  today_only: true        # Only process articles from today
+  max_articles_per_feed: 50  # Maximum articles per feed per run
+```
+
+**Configuration Impact:**
+
+| Option | Default | Purpose | Use Cases |
+|--------|---------|---------|-----------|
+| `enabled` | `true` | Master switch for RSS processing | Maintenance mode, AI-search-only mode |
+| `today_only` | `true` | Filter articles to current day | Reduce noise during initial setup |
+| `max_articles_per_feed` | `50` | Limit articles per RSS feed | Control processing time and resources |
+
+**Processing Logic:**
+1. **Early exit** if `enabled: false`
+2. **Article limiting** applied before today filtering
+3. **Today filtering** applied per article if `today_only: true`
+4. **Duplicate checking** applied after all filters
+
+**Benefits:**
+- **Resource control**: Prevent overwhelming the system with high-volume feeds
+- **Flexible deployment**: Run RSS-only, AI-search-only, or both services
+- **Operational safety**: Limit processing during initial deployment or maintenance
+- **Cost optimization**: Control API usage and processing costs
+
+### RSS Content Processing
+
+The system handles various RSS feed formats with intelligent content extraction:
+
+**RSS Feed Content Priority:**
+1. **`content:encoded`** - Full article content (preferred)
+2. **`description` with CDATA** - Article summaries with HTML (common in news feeds)
+3. **`description` text** - Basic article descriptions (fallback)
+
+**CDATA and HTML Processing:**
+```xml
+<!-- Example: The Hacker News RSS format -->
+<description>
+  <![CDATA[ 
+    Cybersecurity researchers are alerting to a new malware campaign that employs 
+    the ClickFix social engineering tactic to trick users into downloading an 
+    information stealer malware known as Atomic macOS Stealer (AMOS)...
+  ]]>
+</description>
+```
+
+**Processing Steps:**
+1. **CDATA extraction** - Remove `<![CDATA[` wrappers
+2. **HTML cleaning** - Parse and extract text from HTML tags
+3. **Content validation** - Prioritize longer, more substantial content
+4. **Fallback chain** - Use best available content source
+
+**Content Scraping Modes:**
+
+The system supports two distinct scraping approaches for content extraction:
+
+**Mode 1: HTTP Scraping (Default)**
+- Traditional HTTP requests with browser-like headers
+- Fast and lightweight operation
+- Works for most standard websites
+- May be blocked by advanced bot protection
+
+**Mode 2: Chrome Scraping (Advanced)**
+- Real Chrome browser via remote debugging protocol
+- Bypasses sophisticated bot detection systems
+- Handles JavaScript-rendered content
+- Slower but more reliable for protected sites
+
+**Chrome Scraping Architecture:**
+```typescript
+// Chrome Remote Debugging Protocol Integration
+class ChromeScraper {
+  async extractContent(url: string, cssSelector?: string): Promise<string> {
+    // 1. Create new Chrome tab
+    const tab = await this.createTab();
+    
+    // 2. Connect via WebSocket
+    const ws = await this.connectWebSocket(tab.webSocketDebuggerUrl);
+    
+    // 3. Enable debugging domains
+    await this.sendCommand(ws, 'Runtime.enable');
+    await this.sendCommand(ws, 'Page.enable');
+    await this.sendCommand(ws, 'DOM.enable');
+    
+    // 4. Navigate and wait for load
+    await this.sendCommand(ws, 'Page.navigate', { url });
+    await this.waitForPageLoad(ws);
+    
+    // 5. Extract content using CSS selectors
+    const content = await this.extractContentFromPage(ws, cssSelector);
+    
+    // 6. Cleanup resources
+    await this.closeTab(tab.id);
+    ws.close();
+    
+    return content;
+  }
+}
+```
+
+**Chrome Container Integration:**
+- **Shared Chrome instance** across multiple scraping requests
+- **Resource pooling** to minimize container overhead
+- **Automatic tab cleanup** to prevent memory leaks
+- **Connection health monitoring** with automatic reconnection
+- **Configurable Chrome URL** via `rss_processing.chrome_url`
+
+**Scraping Mode Selection:**
+```yaml
+feeds:
+  - name: "Standard Site"
+    scraping_mode: 1  # HTTP scraping (fast)
+  - name: "Protected Site" 
+    scraping_mode: 2  # Chrome scraping (reliable)
+```
+
+**Anti-Bot Protection Handling:**
+- **HTTP Mode**: 3 attempts with exponential backoff (2s, 4s, 8s), browser-like headers
+- **Chrome Mode**: Real browser rendering, JavaScript execution, full DOM access
+- **Intelligent fallback**: RSS content when both scraping modes fail
+- **Content validation**: Ensure minimum content quality for AI processing
 
 ## Shared Services
 

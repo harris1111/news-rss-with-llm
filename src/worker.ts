@@ -28,20 +28,81 @@ async function processJob() {
       return;
     }
 
-    // Extract content
-    const content = await extractContent(job.url, job.css_selector);
-    if (!content) {
-      logger.warn('No content extracted', { url: job.url });
+    // Extract content with fallback to RSS content
+    let content = '';
+    let contentSource = 'web-scraped';
+    
+    try {
+      content = await extractContent(job.url, job.css_selector, job.scraping_mode);
+      if (!content) {
+        throw new Error('No content extracted from web scraping');
+      }
+      contentSource = job.scraping_mode === 2 ? 'chrome-scraped' : 'http-scraped';
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn('Web scraping failed, trying RSS content fallback', {
+        url: job.url,
+        error: errorMessage
+      });
+      
+      // Try RSS content as fallback (prioritize longer content)
+      const rssContent = job.meta?.content || '';
+      const rssDescription = job.meta?.description || '';
+      
+      if (rssContent && rssContent.length >= 100) {
+        content = rssContent;
+        contentSource = 'rss-content';
+        logger.info('Using RSS content as fallback', {
+          url: job.url,
+          contentLength: content.length,
+          contentPreview: content.substring(0, 100) + '...'
+        });
+      } else if (rssDescription && rssDescription.length >= 50) {
+        content = rssDescription;
+        contentSource = 'rss-description';
+        logger.info('Using RSS description as fallback', {
+          url: job.url,
+          contentLength: content.length,
+          contentPreview: content.substring(0, 100) + '...'
+        });
+      } else if (rssContent) {
+        // Use RSS content even if short
+        content = rssContent;
+        contentSource = 'rss-content-short';
+        logger.info('Using short RSS content as fallback', {
+          url: job.url,
+          contentLength: content.length,
+          warning: 'Content may be too short for optimal summarization'
+        });
+      } else {
+        logger.error('No content available from web scraping or RSS', {
+          url: job.url,
+          originalError: errorMessage,
+          rssContentLength: rssContent.length,
+          rssDescriptionLength: rssDescription.length
+        });
+        return;
+      }
+    }
+
+    if (!content || content.trim().length < 20) {
+      logger.warn('Content too short or empty', { 
+        url: job.url, 
+        contentLength: content.length,
+        contentSource,
+        minLength: 20
+      });
       return;
     }
 
     // Process with AI
-    const result = await summarizeAndExtract(content, job.meta?.title || '');
+    const result = await summarizeAndExtract(content, job.meta?.title || '', job.language || 'vi');
     
     logger.debug('AI processing completed', {
       title: job.meta?.title,
       summaryLength: result.summary.length,
-      keywordCount: result.keywords.length
+      keywordCount: result.keywords.length,
+      contentSource
     });
     
     // Store in database
@@ -60,7 +121,8 @@ async function processJob() {
 
     logger.debug('Sending notification', {
       title: job.meta?.title || 'No Title',
-      category: job.category
+      category: job.category,
+      contentSource
     });
 
     // Send notification
@@ -78,7 +140,8 @@ async function processJob() {
     logger.info('Job processed successfully', {
       url: job.url,
       feed: job.feedName,
-      category: job.category
+      category: job.category,
+      contentSource
     });
   } catch (error) {
     logger.error('Error processing job', {
