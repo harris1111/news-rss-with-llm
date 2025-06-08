@@ -7,27 +7,8 @@ import { loadConfig } from './config';
 const logger = createServiceLogger('content-service');
 
 // Chrome scraper instance management
-const chromeScraperState = {
-  instance: null as ChromeScraper | null,
-  initPromise: null as Promise<ChromeScraper> | null
-};
+let chromeScraper: ChromeScraper | null = null;
 
-// ... other code ...
-
-export async function extractContentWithChrome(/* params */) {
-    // ... earlier logic ...
-
-    // Initialize Chrome scraper with proper concurrency handling
-    if (!chromeScraperState.instance) {
-      if (!chromeScraperState.initPromise) {
-        logger.info('Initializing Chrome scraper', { chromeUrl });
-        chromeScraperState.initPromise = createChromeScraper(chromeUrl);
-      }
-      chromeScraperState.instance = await chromeScraperState.initPromise;
-    }
-
-    // Now use chromeScraperState.instance for scraping...
-}
 // Configure axios with browser-like headers to avoid 403 errors
 const httpClient = axios.create({
   timeout: 30000, // 30 second timeout
@@ -190,5 +171,15 @@ async function extractContentWithChrome(url: string, cssSelector?: string): Prom
     chromeScraper = null;
     
     throw error;
+  }
+}
+
+// Export function to cleanup Chrome scraper
+export async function cleanupChromeScraper(): Promise<void> {
+  if (chromeScraper) {
+    // The ChromeScraper handles its own cleanup (closes tabs automatically)
+    // We just need to reset the instance
+    chromeScraper = null;
+    logger.debug('Chrome scraper instance reset');
   }
 } 
