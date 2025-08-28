@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { createServiceLogger } from '../utils/logger';
+import { loadConfig } from './config';
 
 const logger = createServiceLogger('discord-service');
 
@@ -36,21 +37,30 @@ export async function sendDiscordNotification(
   sourceUrl: string,
   category: string
 ): Promise<void> {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  
-  logger.debug('Sending Discord notification', {
-    title,
-    category,
-    summaryLength: summary.length,
-    keywordCount: keywords.length
-  });
-  
-  if (!webhookUrl) {
-    logger.warn('Discord webhook URL not configured, skipping notification');
-    return;
-  }
-
   try {
+    const config = await loadConfig();
+    
+    // Get category-specific webhook URL, fallback to default
+    let webhookUrl = config.discord?.categories?.[category];
+    
+    if (!webhookUrl && config.discord?.default_webhook_url) {
+      webhookUrl = config.discord.default_webhook_url;
+      logger.debug('Using default Discord webhook for category', { category });
+    }
+    
+    logger.debug('Sending Discord notification', {
+      title,
+      category,
+      summaryLength: summary.length,
+      keywordCount: keywords.length,
+      webhookUrl: webhookUrl ? webhookUrl.substring(0, 50) + '...' : 'none'
+    });
+    
+    if (!webhookUrl) {
+      logger.warn('Discord webhook URL not configured, skipping notification', { category });
+      return;
+    }
+
     const message = formatDiscordMessage(title, summary, keywords, sourceUrl);
     
     logger.debug('Discord message prepared', {
